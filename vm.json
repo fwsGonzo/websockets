@@ -1,0 +1,5 @@
+{
+  "net" : [{"device" : "virtio"}],
+  "cpu" : "host",
+  "mem" : 256
+}
