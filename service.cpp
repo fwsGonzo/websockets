@@ -1,18 +1,31 @@
 #include <service>
 #include <net/inet4>
+#include <net/http/server.hpp>
+#include <util/base64.hpp>
+extern "C" char** get_cpu_esp();
 
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
-  auto& server = inet.tcp().bind(port);
-  server.on_connect(
-  [] (auto conn)
+  using namespace http;
+  static auto
+  server = std::make_unique<Server>(inet.tcp());
+
+  server->on_request(
+  [] (Request_ptr req, Response_writer writer)
   {
-    conn->on_read(9000,
-    [conn] (net::tcp::buffer_t buf, size_t n)
-    {
-      printf("%.*s", n, buf.get());
-    });
+    printf("Receiving request:\n%s\n", req->to_string().c_str());
+
+    auto& header = writer.header();
+    header.set_field(header::Connection, "Upgrade");
+    header.set_field(header::Upgrade,    "WebSocket");
+    header.set_field("Sec-WebSocket-Key", base64::encode(*get_cpu_esp(), 16));
+
+    auto& resp = writer.res();
+    resp.set_status_code(Switching_Protocols);
+    
+    writer.send();
   });
+  server->listen(port);
 }
 
 void Service::start()
