@@ -24,6 +24,7 @@
 #define OPCODE_CLOSE       8
 #define OPCODE_PING        9
 #define OPCODE_PONG       10
+#define HEADER_MAXLEN     16
 
 const char* opcode_string(uint16_t code)
 {
@@ -54,9 +55,28 @@ struct ws_header
   bool is_final() const noexcept {
     return (bits >> 7) & 1;
   }
+  void set_final() noexcept {
+    bits |= 0x80;
+    assert(is_final() == true);
+  }
   uint16_t payload() const noexcept {
     return (bits >> 8) & 0x7f;
   }
+  void set_payload(const size_t len)
+  {
+    uint16_t pbits = len;
+    if      (len > 65535) pbits = 127;
+    else if (len > 125)   pbits = 126;
+    bits &= 0x80ff;
+    bits |= (pbits & 0x7f) << 8;
+    
+    if (is_ext())
+        *(uint16_t*) vla = __builtin_bswap16(len);
+    else if (is_ext2())
+        *(uint64_t*) vla = __builtin_bswap64(len);
+    assert(data_length() == len);
+  }
+  
   bool is_ext() const noexcept {
     return payload() == 126;
   }
@@ -69,6 +89,11 @@ struct ws_header
   
   uint8_t opcode() const noexcept {
     return bits & 0xf;
+  }
+  void set_opcode(uint8_t code) {
+    bits &= ~0xf;
+    bits |= code & 0xf;
+    assert(opcode() == code);
   }
   
   bool is_fail() const noexcept {
@@ -130,7 +155,11 @@ WebSocket::WebSocket(
     http::Request_ptr req, 
     http::Response_writer_ptr writer)
 {
-  printf("Request: %s\n", req->to_string().c_str());
+  // assign unique id
+  static size_t id_counter = 0;
+  this->id = id_counter++;
+
+  // validate handshake
   auto view = req->header().value("Sec-WebSocket-Version");
   if (view == nullptr || view != "13") {
     writer->write_header(http::Bad_Request);
@@ -145,6 +174,7 @@ WebSocket::WebSocket(
     return;
   }
 
+  // create handshake response
   auto& header = writer->header();
   header.set_field(http::header::Connection, "Upgrade");
   header.set_field(http::header::Upgrade,    "WebSocket");
@@ -155,29 +185,25 @@ WebSocket::WebSocket(
   this->conn = writer->connection();
   this->conn->on_read(16384, {this, &WebSocket::read_data});
   this->conn->on_close({this, &WebSocket::closed});
-  if (on_connect) on_connect();
 }
 
 void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
 {
-  if (this->conn == nullptr) {
-    failure("read_data: Already closed");
-    return;
-  }
+  // silently ignore data from reset connection
+  if (this->conn == nullptr) return;
   /// parse header
   if (len < sizeof(ws_header)) {
     failure("read_data: Header was too short");
     return;
   }
-  printf("WebSocket header: %u\n", sizeof(ws_header));
-  
   ws_header& hdr = *(ws_header*) buf.get();
+  /*
   printf("Code: %hhu  (%s) (final=%d)\n", 
           hdr.opcode(), opcode_string(hdr.opcode()), hdr.is_final());
   printf("Mask: %d  len=%u\n", hdr.is_masked(), hdr.mask_length());
   printf("Payload: len=%u dataofs=%u\n", 
           hdr.data_length(), hdr.data_offset());
-  
+  */
   /// validate payload length
   if (hdr.reported_length() != len) {
     failure("read: Invalid length");
@@ -196,42 +222,45 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
       }
       break;
   case OPCODE_CLOSE:
-    // they are angry with us :(
-    if (hdr.data_length() >= 2) {
-      // provide reason to user
-      uint16_t reason = *(uint16_t*) hdr.data();
-      if (this->on_close)
-          printf("CLOSE %u\n", reason);
-          this->on_close(__builtin_bswap16(reason));
-    }
-    else {
-      if (this->on_close) this->on_close(1000);
-    }
-    // close it down
-    this->closed();
-    return;
+      // they are angry with us :(
+      if (hdr.data_length() >= 2) {
+        // provide reason to user
+        uint16_t reason = *(uint16_t*) hdr.data();
+        if (this->on_close)
+            this->on_close(__builtin_bswap16(reason));
+      }
+      else {
+        if (this->on_close) this->on_close(1000);
+      }
+      // close it down
+      this->closed();
+      return;
+  case OPCODE_PING:
+      write_opcode(OPCODE_PONG);
+      break;
+  case OPCODE_PONG:
+      break;
   default:
       printf("Unknown opcode: %u\n", hdr.opcode());
       break;
   }
 }
 
-void WebSocket::write(const char* buffer, size_t len)
+static int make_header(char* dest, size_t len, uint8_t code)
 {
-  if (this->conn == nullptr) {
-    failure("write: Already closed");
-    return;
-  }
-  if (this->conn->is_writable() == false) {
-    failure("write: Connection not writable");
-    return;
-  }
-  /// write header
+  new (dest) ws_header;
+  auto& hdr = *(ws_header*) dest;
+  hdr.bits = 0;
+  hdr.set_final();
+  hdr.set_payload(len);
+  hdr.set_opcode(code);
   
-  /// write buffer
-  
+  if      (hdr.is_ext())  return 4;
+  else if (hdr.is_ext2()) return 10;
+  return 2;
 }
-void WebSocket::write(net::tcp::buffer_t buffer, size_t len)
+
+void WebSocket::write(const char* buffer, size_t len, mode_t mode)
 {
   if (this->conn == nullptr) {
     failure("write: Already closed");
@@ -241,14 +270,72 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len)
     failure("write: Connection not writable");
     return;
   }
+  uint8_t opcode = (mode == TEXT) ? OPCODE_TEXT : OPCODE_BINARY;
   /// write header
-  
+  char header[HEADER_MAXLEN];
+  int  header_len = make_header(header, len, opcode);
+  // silently ignore invalid headers
+  if (header_len <= 0) return;
+  this->conn->write(header, header_len);
+  /// write buffer
+  this->conn->write(buffer, len);
+}
+void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
+{
+  if (this->conn == nullptr) {
+    failure("write: Already closed");
+    return;
+  }
+  if (this->conn->is_writable() == false) {
+    failure("write: Connection not writable");
+    return;
+  }
+  uint8_t opcode = (mode == TEXT) ? OPCODE_TEXT : OPCODE_BINARY;
+  /// write header
+  char header[HEADER_MAXLEN];
+  int  header_len = make_header(header, len, opcode);
+  // silently ignore invalid headers
+  if (header_len <= 0) return;
+  this->conn->write(header, header_len);
   /// write shared buffer
-  
+  this->conn->write(buffer, len);
+}
+bool WebSocket::write_opcode(uint8_t code)
+{
+  if (conn == nullptr) return false;
+  if (conn->is_writable() == false) return false;
+  /// write header
+  char header[HEADER_MAXLEN];
+  int  header_len = make_header(header, 0, code);
+  this->conn->write(header, header_len);
+  return true;
 }
 void WebSocket::closed()
 {
-  this->conn = nullptr;
+  this->reset();
+}
+
+WebSocket::~WebSocket()
+{
+  if (conn != nullptr && conn->is_writable())
+      this->close();
+}
+
+void WebSocket::close()
+{
+  /// send CLOSE message
+  this->write_opcode(OPCODE_CLOSE);
+  /// close and unset socket
+  this->conn->close();
+  this->reset();
+}
+
+void WebSocket::reset()
+{
+  this->on_close = nullptr;
+  this->on_error = nullptr;
+  this->on_read  = nullptr;
+  this->conn     = nullptr;
 }
 
 void WebSocket::failure(const std::string& reason)
