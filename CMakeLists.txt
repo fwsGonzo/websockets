@@ -17,7 +17,7 @@ set(MAX_MEM 256)
 
 # Source files to be linked with OS library parts to form bootable image
 set(SOURCES
-    service.cpp
+    service.cpp  websocket.cpp
   )
 
 # To add your own include paths:
