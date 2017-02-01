@@ -16,6 +16,8 @@
 // limitations under the License.
 
 #include "websocket.hpp"
+#include <util/base64.hpp>
+#include <util/sha1.hpp>
 #include <cstdint>
 
 #define OPCODE_CONTINUE    0

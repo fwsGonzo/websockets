@@ -67,21 +67,4 @@ void Service::start()
       {  10, 0,  0,  1 }); // DNS
 
   websocket_service(inet, 8000);
-  
-  SHA1 checksum;
-  checksum.update("abc");
-  assert(checksum.as_hex() == "a9993e364706816aba3e25717850c26c9cd0d89d");
-
-  checksum.update("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
-  assert(checksum.as_hex() == "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
-
-  for (int i = 0; i < 1000000/200; ++i)
-  {
-      checksum.update("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                     );
-  }
-  assert(checksum.as_hex() == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
 }

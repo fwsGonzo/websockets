@@ -20,8 +20,6 @@
 #define NET_WEBSOCKET_HPP
 
 #include <net/http/server.hpp>
-#include <util/base64.hpp>
-#include <util/sha1.hpp>
 
 namespace net {
 
