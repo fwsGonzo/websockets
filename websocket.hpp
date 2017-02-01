@@ -66,7 +66,7 @@ struct WebSocket
 
 private:
   void read_data(net::tcp::buffer_t, size_t);
-  bool write_opcode(uint8_t code);
+  bool write_opcode(uint8_t code, const char*, size_t);
   void failure(const std::string&);
   void closed();
   void reset();
