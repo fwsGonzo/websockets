@@ -3,18 +3,18 @@
 #include <deque>
 #include "websocket.hpp"
 
-extern "C" char** get_cpu_esp();
-std::deque<net::WebSocket_ptr> websockets;
-
-static net::tcp::buffer_t BUFFER;
-static const int          BUFLEN = 1000;
-
+static std::deque<net::WebSocket_ptr> websockets;
 
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
+  // buffer used for testing
+  static net::tcp::buffer_t BUFFER;
+  static const int          BUFLEN = 1000;
+  BUFFER = decltype(BUFFER)(new uint8_t[BUFLEN]);
+  
   using namespace http;
-  static auto
-  server = std::make_unique<Server>(inet.tcp(), nullptr, std::chrono::seconds(0));
+  static auto server = 
+      std::make_unique<Server>(inet.tcp(), nullptr, std::chrono::seconds(0));
 
   server->on_request(
   [] (Request_ptr req, Response_writer_ptr writer)
@@ -56,8 +56,6 @@ void Service::start()
 {
   // add own serial out after service start
   OS::add_stdout_default_serial();
-
-  BUFFER = decltype(BUFFER)(new uint8_t[BUFLEN]);
 
   auto& inet = net::Inet4::ifconfig<>();
   inet.network_config(
