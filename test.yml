@@ -1,0 +1,28 @@
+{
+  "config": {
+      "target": "ws://10.00.42:8000",
+      "phases": [
+        { "duration": 10, "arrivalRate": 20 }
+      ],
+      "payload": [
+        {
+          "path": "./pets.csv",
+          "fields": ["species", "name"]
+        },
+        {
+          "path": "./urls.csv",
+          "fields": ["url"]
+        }
+      ]
+  },
+  "scenarios": [
+    {
+      "engine" : "ws",
+      "flow": [
+        {"send": {"url": "{{{url}}}"}},
+        {"send": {"url": "/{{{name}}}"}},
+        {"send": {"url": "/pets", "json": {"name": "{{ name }}", "species": "{{ species }}"}}}
+      ]
+    }
+  ]
+}

@@ -5,6 +5,20 @@
 
 static std::deque<net::WebSocket_ptr> websockets;
 
+template <typename... Args>
+static net::WebSocket_ptr& new_client(Args&&... args)
+{
+  for (auto& client : websockets) {
+      if (client->is_alive() == false) {
+        return client = 
+            net::WebSocket_ptr(new net::WebSocket(std::forward<Args> (args)...));
+      }
+  }
+  
+  websockets.emplace_back(new net::WebSocket(std::forward<Args> (args)...));
+  return websockets.back();
+}
+
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
   // buffer used for testing
@@ -19,34 +33,24 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   server->on_request(
   [] (Request_ptr req, Response_writer_ptr writer)
   {
-    websockets.emplace_back(
-        new net::WebSocket(std::move(req), std::move(writer)));
-    
-    auto& socket = websockets.back();
+    auto& socket = new_client(std::move(req), std::move(writer));
     // if we are still connected, the handshake was accepted
     if (socket->is_alive())
     {
       socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
-      socket->on_close =
-      [id = socket->get_id()] (uint16_t code) {
-        
-        for (size_t i = 0; i < websockets.size(); i++) {
-            if (websockets[i]->get_id() == id) {
-              printf("WebSocket erased: %s\n", net::WebSocket::status_code(code));
-              websockets.erase(websockets.begin() + i);
-            }
-        }
-      };
+      socket->on_close = nullptr;
       socket->on_read =
       [] (const char* data, size_t len) {
-        printf("WebSocket on_read: %.*s\n", len, data);
+        (void) data;
+        (void) len;
+        //printf("WebSocket on_read: %.*s\n", len, data);
       };
       
       //socket->close();
       for (int i = 0; i < 10000; i++)
           socket->write(BUFFER, BUFLEN, net::WebSocket::BINARY);
       
-      //socket->close();
+      socket->close();
     }
   });
   server->listen(port);
@@ -57,7 +61,7 @@ void Service::start()
   // add own serial out after service start
   OS::add_stdout_default_serial();
 
-  auto& inet = net::Inet4::ifconfig<>();
+  auto& inet = net::Inet4::ifconfig<>(0);
   inet.network_config(
       {  10, 0,  0, 42 },  // IP
       { 255,255,255, 0 },  // Netmask
