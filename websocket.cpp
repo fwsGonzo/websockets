@@ -235,7 +235,7 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
         if (this->on_close) this->on_close(1000);
       }
       // close it down
-      this->closed();
+      this->close();
       return;
   case OPCODE_PING:
       write_opcode(OPCODE_PONG, hdr.data(), hdr.data_length());
@@ -302,21 +302,22 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
   /// write shared buffer
   this->conn->write(buffer, len);
 }
-bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t len)
+bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t datalen)
 {
   if (conn == nullptr) return false;
   if (conn->is_writable() == false) return false;
   /// write header
   char header[HEADER_MAXLEN];
-  int  header_len = make_header(header, len, code);
+  int  header_len = make_header(header, datalen, code);
   this->conn->write(header, header_len);
   /// write buffer (if present)
-  if (buffer != nullptr && len > 0)
-      this->conn->write(buffer, len);
+  if (buffer != nullptr && datalen > 0)
+      this->conn->write(buffer, datalen);
   return true;
 }
 void WebSocket::closed()
 {
+  if (this->on_close) this->on_close(1000);
   this->reset();
 }
 
@@ -332,7 +333,6 @@ void WebSocket::close()
   this->write_opcode(OPCODE_CLOSE, nullptr, 0);
   /// close and unset socket
   this->conn->close();
-  this->reset();
 }
 
 void WebSocket::reset()

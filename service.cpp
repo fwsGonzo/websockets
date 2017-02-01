@@ -8,11 +8,10 @@ static std::deque<net::WebSocket_ptr> websockets;
 template <typename... Args>
 static net::WebSocket_ptr& new_client(Args&&... args)
 {
-  for (auto& client : websockets) {
-      if (client->is_alive() == false) {
-        return client = 
-            net::WebSocket_ptr(new net::WebSocket(std::forward<Args> (args)...));
-      }
+  for (auto& client : websockets)
+  if (client->is_alive() == false) {
+    return client = 
+        net::WebSocket_ptr(new net::WebSocket(std::forward<Args> (args)...));
   }
   
   websockets.emplace_back(new net::WebSocket(std::forward<Args> (args)...));
@@ -37,8 +36,6 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     // if we are still connected, the handshake was accepted
     if (socket->is_alive())
     {
-      socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
-      socket->on_close = nullptr;
       socket->on_read =
       [] (const char* data, size_t len) {
         (void) data;
@@ -46,11 +43,11 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
         //printf("WebSocket on_read: %.*s\n", len, data);
       };
       
-      //socket->close();
-      for (int i = 0; i < 10000; i++)
+      socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
+      for (int i = 0; i < 1000; i++)
           socket->write(BUFFER, BUFLEN, net::WebSocket::BINARY);
       
-      socket->close();
+      //socket->close();
     }
   });
   server->listen(port);
