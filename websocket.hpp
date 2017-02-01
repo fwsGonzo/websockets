@@ -25,39 +25,45 @@ namespace net {
 
 struct WebSocket
 {
-  WebSocket(http::Request_ptr req, 
-            http::Response_writer_ptr writer);
-  ~WebSocket();
-  
+  typedef delegate<void(uint16_t)>    close_func;
+  typedef delegate<void(std::string)> error_func;
+  typedef delegate<void(const char*, size_t)> read_func;
+
+  enum mode_t {
+    TEXT,
+    BINARY
+  };
+
+  void write(const char* buffer, size_t len, mode_t = TEXT);
+  void write(net::tcp::buffer_t, size_t len, mode_t = TEXT);
+
+  void write(const std::string& text)
+  {
+    write(text.c_str(), text.size(), TEXT);
+  }
+
+  // close the websocket
+  void close();
+
   bool is_alive() const noexcept {
     return this->conn != nullptr;
   }
   size_t get_id() const noexcept {
     return this->id;
   }
-  
-  enum mode_t {
-    TEXT,
-    BINARY
-  };
-  
-  void write(const std::string& text)
-  {
-    write(text.c_str(), text.size(), TEXT);
-  }
-  void write(const char* buffer, size_t len, mode_t = TEXT);
-  void write(net::tcp::buffer_t, size_t len, mode_t = TEXT);
-  
-  // plain-text reason for status code
-  static const char* status_code(uint16_t code);
-  
-  // close the websocket
-  void close();
-  
+
   // callbacks
-  delegate<void(uint16_t)>    on_close = nullptr;
-  delegate<void(std::string)> on_error = nullptr;
-  delegate<void(const char*, size_t)> on_read = nullptr;
+  close_func on_close = nullptr;
+  error_func on_error = nullptr;
+  read_func  on_read  = nullptr;
+
+  WebSocket(http::Request_ptr req, 
+            http::Response_writer_ptr writer);
+  ~WebSocket();
+
+  // string description for status codes
+  static const char* status_code(uint16_t code);
+
 private:
   void read_data(net::tcp::buffer_t, size_t);
   bool write_opcode(uint8_t code);
