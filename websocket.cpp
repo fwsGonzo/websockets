@@ -18,34 +18,68 @@
 #include "websocket.hpp"
 #include <cstdint>
 
+#define OPCODE_CONTINUE    0
+#define OPCODE_TEXT        1
+#define OPCODE_BINARY      2
+#define OPCODE_CLOSE       8
+#define OPCODE_PING        9
+#define OPCODE_PONG       10
+
+const char* opcode_string(uint16_t code)
+{
+  switch (code) {
+  case OPCODE_CONTINUE:
+      return "Continuation frame";
+  case OPCODE_TEXT:
+      return "Text frame";
+  case OPCODE_BINARY:
+      return "Binary frame";
+  case OPCODE_CLOSE:
+      return "Connection close";
+  case OPCODE_PING:
+      return "Ping";
+  case OPCODE_PONG:
+      return "Pong";
+  default:
+      return "Reserved (unspecified)";
+  }
+}
+
 namespace net
 {
 struct ws_header
 {
-  uint16_t   fin     : 1;
-  uint16_t   rsv1    : 1;
-  uint16_t   rsv2    : 1;
-  uint16_t   rsv3    : 1;
-  uint16_t   opcode  : 4;
-  uint16_t   mask    : 1;
-  uint16_t   payload : 7;
+  uint16_t bits;
   
+  bool is_final() const noexcept {
+    return (bits >> 7) & 1;
+  }
+  uint16_t payload() const noexcept {
+    return (bits >> 8) & 0x7f;
+  }
   bool is_ext() const noexcept {
-    return payload == 126;
+    return payload() == 126;
   }
   bool is_ext2() const noexcept {
-    return payload == 127;
+    return payload() == 127;
   }
-  bool is_key_masked() const noexcept {
-    return mask != 0;
+  bool is_masked() const noexcept {
+    return bits >> 15;
+  }
+  
+  uint8_t opcode() const noexcept {
+    return bits & 0xf;
   }
   
   bool is_fail() const noexcept {
-    return rsv1 != 0 || rsv2 != 0 || rsv3 != 0;
+    return false;
   }
   
   size_t mask_length() const noexcept {
-    return (is_key_masked()) ? 4 : 0;
+    return is_masked() ? 4 : 0;
+  }
+  const char* keymask() const noexcept {
+    return &vla[data_offset() - mask_length()];
   }
   
   size_t data_offset() const noexcept {
@@ -55,12 +89,30 @@ struct ws_header
     return len;
   }
   size_t data_length() const noexcept {
-    if (is_ext2())  return *(uint64_t*) vla;
-    if (is_ext())   return *(uint16_t*) vla;
-    return payload;
+    if (is_ext2())
+        return __builtin_bswap64(*(uint64_t*) vla) & 0xffffffff;
+    if (is_ext())
+        return __builtin_bswap16(*(uint16_t*) vla);
+    return payload();
   }
   const char* data() const noexcept {
     return &vla[data_offset()];
+  }
+  char* data() noexcept {
+    return &vla[data_offset()];
+  }
+  void demask_data()
+  {
+    char* ptr  = data();
+    const char* mask = keymask();
+    for (size_t i = 0; i < data_length(); i++)
+    {
+      ptr[i] = ptr[i] xor mask[i & 3];
+    }
+  }
+  
+  size_t reported_length() const noexcept {
+    return sizeof(ws_header) + data_offset() + data_length();
   }
   
   char vla[0];
@@ -78,6 +130,7 @@ WebSocket::WebSocket(
     http::Request_ptr req, 
     http::Response_writer_ptr writer)
 {
+  printf("Request: %s\n", req->to_string().c_str());
   auto view = req->header().value("Sec-WebSocket-Version");
   if (view == nullptr || view != "13") {
     writer->write_header(http::Bad_Request);
@@ -116,13 +169,51 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
     failure("read_data: Header was too short");
     return;
   }
+  printf("WebSocket header: %u\n", sizeof(ws_header));
   
   ws_header& hdr = *(ws_header*) buf.get();
-  printf("Got header: len=%u dataofs=%u\n", 
+  printf("Code: %hhu  (%s) (final=%d)\n", 
+          hdr.opcode(), opcode_string(hdr.opcode()), hdr.is_final());
+  printf("Mask: %d  len=%u\n", hdr.is_masked(), hdr.mask_length());
+  printf("Payload: len=%u dataofs=%u\n", 
           hdr.data_length(), hdr.data_offset());
   
-  /// .. call on_read
-  //on_read(data);
+  /// validate payload length
+  if (hdr.reported_length() != len) {
+    failure("read: Invalid length");
+    return;
+  }
+  /// unmask data (if masked)
+  if (hdr.is_masked())
+      hdr.demask_data();
+  
+  switch (hdr.opcode()) {
+  case OPCODE_TEXT:
+  case OPCODE_BINARY:
+      /// .. call on_read
+      if (on_read) {
+          on_read(hdr.data(), hdr.data_length());
+      }
+      break;
+  case OPCODE_CLOSE:
+    // they are angry with us :(
+    if (hdr.data_length() >= 2) {
+      // provide reason to user
+      uint16_t reason = *(uint16_t*) hdr.data();
+      if (this->on_close)
+          printf("CLOSE %u\n", reason);
+          this->on_close(__builtin_bswap16(reason));
+    }
+    else {
+      if (this->on_close) this->on_close(1000);
+    }
+    // close it down
+    this->closed();
+    return;
+  default:
+      printf("Unknown opcode: %u\n", hdr.opcode());
+      break;
+  }
 }
 
 void WebSocket::write(const char* buffer, size_t len)
@@ -158,7 +249,6 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len)
 void WebSocket::closed()
 {
   this->conn = nullptr;
-  if (this->on_close) this->on_close();
 }
 
 void WebSocket::failure(const std::string& reason)
@@ -166,6 +256,40 @@ void WebSocket::failure(const std::string& reason)
   printf("Failure: %s\n", reason.c_str());
   if (conn != nullptr) conn->close();
   if (this->on_error) on_error(reason);
+}
+
+const char* WebSocket::status_code(uint16_t code)
+{
+  switch (code) {
+  case 1000:
+      return "Closed";
+  case 1001:
+      return "Going away";
+  case 1002:
+      return "Protocol error";
+  case 1003:
+      return "Cannot accept data";
+  case 1004:
+      return "Reserved";
+  case 1005:
+      return "Status code not present";
+  case 1006:
+      return "Connection closed abnormally";
+  case 1007:
+      return "Non UTF-8 data received";
+  case 1008:
+      return "Message violated policy";
+  case 1009:
+      return "Message too big";
+  case 1010:
+      return "Missing extension";
+  case 1011:
+      return "Internal server error";
+  case 1015:
+      return "TLS handshake failure";
+  default:
+      return "Unknown status code";
+  }
 }
 
 }

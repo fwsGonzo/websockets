@@ -37,11 +37,14 @@ struct WebSocket
   void write(const char* buffer, size_t len);
   void write(net::tcp::buffer_t, size_t len);
   
+  // plain-text reason for status code
+  static const char* status_code(uint16_t code);
+  
   // callbacks
-  delegate<void()> on_connect   = nullptr;
-  delegate<void()> on_close     = nullptr;
+  delegate<void()>            on_connect = nullptr;
+  delegate<void(uint16_t)>    on_close = nullptr;
   delegate<void(std::string)> on_error = nullptr;
-  delegate<void(net::tcp::buffer_t, size_t)> on_read = nullptr;
+  delegate<void(const char*, size_t)> on_read = nullptr;
 private:
   void read_data(net::tcp::buffer_t, size_t);
   void failure(const std::string&);

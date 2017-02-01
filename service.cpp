@@ -16,6 +16,16 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   {
     websockets.emplace_back(
         new net::WebSocket(std::move(req), std::move(writer)));
+    
+    auto& socket = websockets.back();
+    socket->on_close =
+    [] (uint16_t code) {
+      printf("WebSocket closed: %s\n", net::WebSocket::status_code(code));
+    };
+    socket->on_read =
+    [] (const char* data, size_t len) {
+      printf("on_read: %.*s\n", len, data);
+    };
   });
   server->listen(port);
 }
