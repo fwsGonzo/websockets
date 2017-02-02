@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 2.8.9)
+set(CMAKE_TOOLCHAIN_FILE $ENV{INCLUDEOS_PREFIX}/includeos/i686-elf-toolchain.cmake)
 project(service)
 
 # IncludeOS install location

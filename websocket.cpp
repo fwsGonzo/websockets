@@ -185,7 +185,7 @@ WebSocket::WebSocket(
   writer->write_header(http::Switching_Protocols);
   
   // we assume we are connected here
-  this->conn = writer->connection();
+  this->conn = writer->connection().release();
   this->conn->on_read(16384, {this, &WebSocket::read_data});
   this->conn->on_close({this, &WebSocket::tcp_closed});
 }
