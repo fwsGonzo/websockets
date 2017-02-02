@@ -33,16 +33,16 @@ struct WebSocket
   typedef delegate<void(std::string)> error_func;
   typedef delegate<void(const char*, size_t)> read_func;
 
+  /// Server-side connection
+  WebSocket(http::Request_ptr req, http::Response_writer_ptr writer);
+  /// Client-side connection
+  static void
+  connect(http::Client& client, uri::URI uri, connect_func callback);
+
   enum mode_t {
     TEXT,
     BINARY
   };
-
-  /// Server-side connection
-  WebSocket(http::Request_ptr req, http::Response_writer_ptr writer);
-  /// Client-side connection
-  void connect(http::Client& client, uri::URI uri, connect_func callback);
-
   void write(const char* buffer, size_t len, mode_t = TEXT);
   void write(net::tcp::buffer_t, size_t len, mode_t = TEXT);
 

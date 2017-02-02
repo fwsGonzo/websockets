@@ -51,6 +51,19 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     }
   });
   server->listen(port);
+
+  static http::Client client(inet.tcp());
+  net::WebSocket::connect(client, "ws://10.0.0.1:8001/", 
+  [] (net::WebSocket_ptr socket)
+  {
+    if (!socket) {
+      printf("WS Connection failed!\n");
+      return;
+    }
+    printf("Connected!\n");
+    
+  });
+
 }
 
 void Service::start()

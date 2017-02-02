@@ -449,7 +449,7 @@ void WebSocket::connect(
   // send HTTP request
   client.get(uri, ws_headers,
   http::Client::Response_handler::make_packed(
-  [callback, key] (auto err, auto resp)
+  [callback, key] (auto err, auto resp, auto& conn)
   {
     if (!err and resp->status_code() == http::Switching_Protocols)
     {
@@ -467,7 +467,7 @@ void WebSocket::connect(
       }
       
       /// create socket
-      callback(WebSocket_ptr(new WebSocket(resp->connection())));
+      callback(WebSocket_ptr(new WebSocket(conn.release())));
     }
     else {
       printf("request failed\n");
