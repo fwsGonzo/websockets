@@ -17,6 +17,7 @@
 
 #include "websocket.hpp"
 #include <util/base64.hpp>
+#include <util/crc32.hpp>
 #include <util/sha1.hpp>
 #include <cstdint>
 
@@ -47,6 +48,7 @@ const char* opcode_string(uint16_t code)
       return "Reserved (unspecified)";
   }
 }
+extern void print_backtrace();
 
 namespace net
 {
@@ -186,11 +188,12 @@ WebSocket::WebSocket(
   // we assume we are connected here
   this->conn = writer->connection();
   this->conn->on_read(16384, {this, &WebSocket::read_data});
-  this->conn->on_close({this, &WebSocket::closed});
+  this->conn->on_close({this, &WebSocket::tcp_closed});
 }
 
 void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
 {
+  validate();
   // silently ignore data from reset connection
   if (this->conn == nullptr) return;
   /// parse header
@@ -211,6 +214,7 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
     failure("read: Invalid length");
     return;
   }
+validate();
   /// unmask data (if masked)
   if (hdr.is_masked())
       hdr.demask_data();
@@ -239,9 +243,9 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
       return;
   case OPCODE_PING:
       write_opcode(OPCODE_PONG, hdr.data(), hdr.data_length());
-      break;
+      return;
   case OPCODE_PONG:
-      break;
+      return;
   default:
       printf("Unknown opcode: %u\n", hdr.opcode());
       break;
@@ -264,6 +268,7 @@ static int make_header(char* dest, size_t len, uint8_t code)
 
 void WebSocket::write(const char* buffer, size_t len, mode_t mode)
 {
+  validate();
   if (this->conn == nullptr) {
     failure("write: Already closed");
     return;
@@ -281,9 +286,11 @@ void WebSocket::write(const char* buffer, size_t len, mode_t mode)
   this->conn->write(header, header_len);
   /// write buffer
   this->conn->write(buffer, len);
+  validate();
 }
 void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
 {
+  validate();
   if (this->conn == nullptr) {
     failure("write: Already closed");
     return;
@@ -301,9 +308,11 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
   this->conn->write(header, header_len);
   /// write shared buffer
   this->conn->write(buffer, len);
+  validate();
 }
 bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t datalen)
 {
+  validate();
   if (conn == nullptr) return false;
   if (conn->is_writable() == false) return false;
   /// write header
@@ -313,11 +322,13 @@ bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t datalen)
   /// write buffer (if present)
   if (buffer != nullptr && datalen > 0)
       this->conn->write(buffer, datalen);
+  validate();
   return true;
 }
-void WebSocket::closed()
+void WebSocket::tcp_closed()
 {
-  if (this->on_close) this->on_close(1000);
+  validate();
+  if (this->on_close != nullptr) this->on_close(1000);
   this->reset();
 }
 
@@ -326,21 +337,53 @@ WebSocket::~WebSocket()
   if (conn != nullptr && conn->is_writable())
       this->close();
 }
+WebSocket::WebSocket(WebSocket&& other)
+{
+  printf("MOVED\n");
+  validate();
+  other.on_close = std::move(on_close);
+  other.on_error = std::move(on_error);
+  other.on_read  = std::move(on_read);
+  other.conn     = std::move(conn);
+  other.id       = id;
+}
 
 void WebSocket::close()
 {
+  validate();
   /// send CLOSE message
   this->write_opcode(OPCODE_CLOSE, nullptr, 0);
   /// close and unset socket
   this->conn->close();
+  this->reset();
 }
 
 void WebSocket::reset()
 {
-  this->on_close = nullptr;
-  this->on_error = nullptr;
-  this->on_read  = nullptr;
-  this->conn     = nullptr;
+  validate();
+  if (this->on_close) this->on_close = nullptr;
+  if (this->on_error) this->on_error = nullptr;
+  if (this->on_read)  this->on_read  = nullptr;
+  this->conn = nullptr;
+  printf("[%p] Reset happened 0x%08x\n", this, csum);
+  this->csum = 0;
+}
+uint32_t WebSocket::checksum()
+{
+  return crc32(this, sizeof(*this)-4);
+}
+void WebSocket::setsum()
+{
+  csum = checksum();
+}
+void WebSocket::validate()
+{
+  if (csum != checksum() && csum != 0)
+  {
+    printf("[%p] csum: 0x%08x  actual: 0x%08x\n", this, csum, checksum());
+    print_backtrace();
+    assert(0 && "Validation failed");
+  }
 }
 
 void WebSocket::failure(const std::string& reason)

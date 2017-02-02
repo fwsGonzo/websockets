@@ -10,8 +10,9 @@ static net::WebSocket_ptr& new_client(Args&&... args)
 {
   for (auto& client : websockets)
   if (client->is_alive() == false) {
-    return client = 
-        net::WebSocket_ptr(new net::WebSocket(std::forward<Args> (args)...));
+    client = nullptr;
+    //return client = 
+    //    net::WebSocket_ptr(new net::WebSocket(std::forward<Args> (args)...));
   }
   
   websockets.emplace_back(new net::WebSocket(std::forward<Args> (args)...));
@@ -47,6 +48,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
       for (int i = 0; i < 1000; i++)
           socket->write(BUFFER, BUFLEN, net::WebSocket::BINARY);
       
+      socket->setsum();
       //socket->close();
     }
   });

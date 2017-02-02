@@ -2,7 +2,7 @@
   "config": {
       "target": "ws://10.00.42:8000",
       "phases": [
-        { "duration": 10, "arrivalRate": 50 }
+        { "duration": 10, "arrivalRate": 30 }
       ],
       "payload": [
         {

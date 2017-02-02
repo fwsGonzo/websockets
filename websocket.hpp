@@ -60,19 +60,28 @@ struct WebSocket
   WebSocket(http::Request_ptr req, 
             http::Response_writer_ptr writer);
   ~WebSocket();
+  WebSocket(WebSocket&&);
 
   // string description for status codes
   static const char* status_code(uint16_t code);
+  void     setsum();
+  uint32_t checksum();
+  void     validate();
 
 private:
+  WebSocket(const WebSocket&) = delete;
+  WebSocket& operator= (const WebSocket&) = delete;
+  WebSocket& operator= (WebSocket&&) = delete;
   void read_data(net::tcp::buffer_t, size_t);
   bool write_opcode(uint8_t code, const char*, size_t);
   void failure(const std::string&);
-  void closed();
+  void tcp_closed();
   void reset();
-  
+
   net::tcp::Connection_ptr conn = nullptr;
   size_t id;
+  
+  uint32_t csum = 0;
 };
 typedef std::unique_ptr<WebSocket> WebSocket_ptr;
 
