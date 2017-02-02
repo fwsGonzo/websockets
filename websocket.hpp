@@ -64,9 +64,6 @@ struct WebSocket
 
   // string description for status codes
   static const char* status_code(uint16_t code);
-  void     setsum();
-  uint32_t checksum();
-  void     validate();
 
 private:
   WebSocket(const WebSocket&) = delete;
@@ -80,8 +77,6 @@ private:
 
   net::tcp::Connection_ptr conn = nullptr;
   size_t id;
-  
-  uint32_t csum = 0;
 };
 typedef std::unique_ptr<WebSocket> WebSocket_ptr;
 
