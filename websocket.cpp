@@ -162,7 +162,7 @@ encode_hash(const std::string& key)
 }
 
 WebSocket::WebSocket(tcp::Connection_ptr tcpconn)
-    : conn(tcpconn)
+    : conn(tcpconn), clientside(true)
 {
   assert(conn != nullptr);
   assert(conn->is_connected());
@@ -430,48 +430,42 @@ const char* WebSocket::status_code(uint16_t code)
 }
 
 void WebSocket::connect(
-      http::Client& client, uri::URI uri, connect_func callback)
+      http::Client& client, 
+      std::string   origin, 
+      uri::URI      remote, 
+      connect_func  callback)
 {
-  if (uri.scheme() != "ws") {
-    callback(nullptr); return;
-  }
-  
   std::string hash = SHA1::oneshot_raw(std::to_string(OS::cycles_since_boot())); hash.resize(16);
   std::string key  = base64::encode(hash);
   
   http::Header_set ws_headers {
-      {"Host",       uri.host().to_string()},
-      {"Connection", "Upgrade"},
+      {"Origin",     origin  },
+      {"Host",       remote.str()},
+      {"Connection", "Upgrade"  },
       {"Upgrade",    "WebSocket"},
       {"Sec-WebSocket-Version", "13"},
-      {"Sec-WebSocket-Key",     key}
+      {"Sec-WebSocket-Key",     key }
   };
   // send HTTP request
-  client.get(uri, ws_headers,
+  printf("Sending request with key %s (len=%u)\n", key.c_str(), key.size());
+  client.get(remote, ws_headers,
   http::Client::Response_handler::make_packed(
   [callback, key] (auto err, auto resp, auto& conn)
   {
-    if (!err and resp->status_code() == http::Switching_Protocols)
+    if (err || resp->status_code() != http::Switching_Protocols)
+    {
+      callback(nullptr);
+    }
+    else
     {
       /// validate response
-      if (resp->header().value("Sec-WebSocket-Version") != "13")
+      auto hash = resp->header().value("Sec-WebSocket-Accept");
+      if (hash == nullptr || hash != encode_hash(key))
       {
-        printf("missing version\n");
         callback(nullptr); return;
       }
-      auto hash = resp->header().value("Sec-WebSocket-Key");
-      if (hash != encode_hash(key))
-      {
-        printf("hash failed\n");
-        callback(nullptr); return;
-      }
-      
-      /// create socket
+      /// create open websocket
       callback(WebSocket_ptr(new WebSocket(conn.release())));
-    }
-    else {
-      printf("request failed\n");
-      callback(nullptr);
     }
   }));
 }

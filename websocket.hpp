@@ -34,10 +34,14 @@ struct WebSocket
   typedef delegate<void(const char*, size_t)> read_func;
 
   /// Server-side connection
-  WebSocket(http::Request_ptr req, http::Response_writer_ptr writer);
+  WebSocket(http::Request_ptr         request,
+            http::Response_writer_ptr response);
   /// Client-side connection
   static void
-  connect(http::Client& client, uri::URI uri, connect_func callback);
+  connect(http::Client& client, 
+          std::string   origin,
+          uri::URI      dest,
+          connect_func  callback);
 
   enum mode_t {
     TEXT,

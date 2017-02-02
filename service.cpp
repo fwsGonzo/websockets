@@ -53,7 +53,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   server->listen(port);
 
   static http::Client client(inet.tcp());
-  net::WebSocket::connect(client, "ws://10.0.0.1:8001/", 
+  net::WebSocket::connect(client, "ws://10.0.0.42", "ws://10.0.0.1:8001/", 
   [] (net::WebSocket_ptr socket)
   {
     if (!socket) {
@@ -61,7 +61,8 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
       return;
     }
     printf("Connected!\n");
-    
+    websockets.push_back(std::move(socket));
+    websockets.back()->write("HOLAS");
   });
 
 }
