@@ -16,6 +16,7 @@
 // limitations under the License.
 
 #include "websocket.hpp"
+#include <kernel/os.hpp>
 #include <util/base64.hpp>
 #include <util/sha1.hpp>
 #include <cstdint>
@@ -86,8 +87,14 @@ struct ws_header
   bool is_ext2() const noexcept {
     return payload() == 127;
   }
+  
   bool is_masked() const noexcept {
-    return bits >> 15;
+    return bits & 0x8000;
+  }
+  void set_masked() noexcept {
+    bits |= 0x8000;
+    uint32_t mask = OS::cycles_since_boot() & 0xffffffff;
+    memcpy(keymask(), &mask, sizeof(mask));
   }
   
   uint8_t opcode() const noexcept {
@@ -106,7 +113,7 @@ struct ws_header
   size_t mask_length() const noexcept {
     return is_masked() ? 4 : 0;
   }
-  const char* keymask() const noexcept {
+  char* keymask() noexcept {
     return &vla[data_offset() - mask_length()];
   }
   
@@ -129,7 +136,7 @@ struct ws_header
   char* data() noexcept {
     return &vla[data_offset()];
   }
-  void demask_data()
+  void masking_algorithm()
   {
     char* ptr  = data();
     const char* mask = keymask();
@@ -157,11 +164,8 @@ encode_hash(const std::string& key)
 WebSocket::WebSocket(
     http::Request_ptr req, 
     http::Response_writer_ptr writer)
+  : clientside(false)
 {
-  // assign unique id
-  static size_t id_counter = 0;
-  this->id = id_counter++;
-
   // validate handshake
   auto view = req->header().value("Sec-WebSocket-Version");
   if (view == nullptr || view != "13") {
@@ -213,8 +217,18 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
     return;
   }
   /// unmask data (if masked)
-  if (hdr.is_masked())
-      hdr.demask_data();
+  if (hdr.is_masked()) {
+      if (clientside == false)
+          // apply masking algorithm to demask data
+          hdr.masking_algorithm();
+      else {
+        failure("Read masked message from server");
+        return;
+      }
+  } else if (clientside == false) {
+    failure("Read unmasked message from client");
+    return;
+  }
   
   switch (hdr.opcode()) {
   case OPCODE_TEXT:
@@ -249,7 +263,7 @@ void WebSocket::read_data(net::tcp::buffer_t buf, size_t len)
   }
 }
 
-static int make_header(char* dest, size_t len, uint8_t code)
+static size_t make_header(char* dest, size_t len, uint8_t code, bool client)
 {
   new (dest) ws_header;
   auto& hdr = *(ws_header*) dest;
@@ -257,10 +271,11 @@ static int make_header(char* dest, size_t len, uint8_t code)
   hdr.set_final();
   hdr.set_payload(len);
   hdr.set_opcode(code);
-  
-  if      (hdr.is_ext())  return 4;
-  else if (hdr.is_ext2()) return 10;
-  return 2;
+  if (client) {
+    hdr.set_masked();
+  }
+  // header size + data offset
+  return sizeof(ws_header) + hdr.data_offset();
 }
 
 void WebSocket::write(const char* buffer, size_t len, mode_t mode)
@@ -274,14 +289,23 @@ void WebSocket::write(const char* buffer, size_t len, mode_t mode)
     return;
   }
   uint8_t opcode = (mode == TEXT) ? OPCODE_TEXT : OPCODE_BINARY;
-  /// write header
-  char header[HEADER_MAXLEN];
-  int  header_len = make_header(header, len, opcode);
-  // silently ignore invalid headers
-  if (header_len <= 0) return;
-  this->conn->write(header, header_len);
-  /// write buffer
-  this->conn->write(buffer, len);
+  // allocate header and data at the same time
+  auto buf = net::tcp::buffer_t(new uint8_t[HEADER_MAXLEN + len]);
+  // fill header
+  int  header_len = make_header((char*) buf.get(), len, opcode, clientside);
+  // get data offset & fill in data into buffer
+  char* data_ptr = (char*) buf.get() + header_len;
+  memcpy(data_ptr, buffer, len);
+  // for client-side we have to mask the data
+  if (clientside)
+  {
+    // mask data to server
+    auto& hdr = *(ws_header*) buf.get();
+    assert(hdr.is_masked());
+    hdr.masking_algorithm();
+  }
+  /// send everything as shared buffer
+  this->conn->write(buf, header_len + len);
 }
 void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
 {
@@ -293,12 +317,14 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
     failure("write: Connection not writable");
     return;
   }
+  if (clientside == true) {
+    failure("write: Client-side does not support sending shared buffers");
+    return;
+  }
   uint8_t opcode = (mode == TEXT) ? OPCODE_TEXT : OPCODE_BINARY;
   /// write header
   char header[HEADER_MAXLEN];
-  int  header_len = make_header(header, len, opcode);
-  // silently ignore invalid headers
-  if (header_len <= 0) return;
+  int  header_len = make_header(header, len, opcode, false);
   this->conn->write(header, header_len);
   /// write shared buffer
   this->conn->write(buffer, len);
@@ -309,7 +335,7 @@ bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t datalen)
   if (conn->is_writable() == false) return false;
   /// write header
   char header[HEADER_MAXLEN];
-  int  header_len = make_header(header, datalen, code);
+  int  header_len = make_header(header, datalen, code, clientside);
   this->conn->write(header, header_len);
   /// write buffer (if present)
   if (buffer != nullptr && datalen > 0)
@@ -334,7 +360,7 @@ WebSocket::WebSocket(WebSocket&& other)
   other.on_error = std::move(on_error);
   other.on_read  = std::move(on_read);
   other.conn     = std::move(conn);
-  other.id       = id;
+  other.clientside = clientside;
 }
 
 void WebSocket::close()

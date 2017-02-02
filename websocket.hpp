@@ -48,17 +48,17 @@ struct WebSocket
   bool is_alive() const noexcept {
     return this->conn != nullptr;
   }
-  size_t get_id() const noexcept {
-    return this->id;
-  }
 
   // callbacks
   close_func on_close = nullptr;
   error_func on_error = nullptr;
   read_func  on_read  = nullptr;
 
+  /// Server-side connection
   WebSocket(http::Request_ptr req, 
             http::Response_writer_ptr writer);
+  /// Client-side connection
+  //WebSocket(...);
   ~WebSocket();
   WebSocket(WebSocket&&);
 
@@ -76,7 +76,7 @@ private:
   void reset();
 
   net::tcp::Connection_ptr conn = nullptr;
-  size_t id;
+  bool clientside;
 };
 typedef std::unique_ptr<WebSocket> WebSocket_ptr;
 
