@@ -20,11 +20,15 @@
 #define NET_WEBSOCKET_HPP
 
 #include <net/http/server.hpp>
+#include <net/http/client.hpp>
 
 namespace net {
 
 struct WebSocket
 {
+  typedef std::unique_ptr<WebSocket> WebSocket_ptr;
+
+  typedef delegate<void(WebSocket_ptr)> connect_func;
   typedef delegate<void(uint16_t)>    close_func;
   typedef delegate<void(std::string)> error_func;
   typedef delegate<void(const char*, size_t)> read_func;
@@ -33,6 +37,11 @@ struct WebSocket
     TEXT,
     BINARY
   };
+
+  /// Server-side connection
+  WebSocket(http::Request_ptr req, http::Response_writer_ptr writer);
+  /// Client-side connection
+  void connect(http::Client& client, uri::URI uri, connect_func callback);
 
   void write(const char* buffer, size_t len, mode_t = TEXT);
   void write(net::tcp::buffer_t, size_t len, mode_t = TEXT);
@@ -45,27 +54,24 @@ struct WebSocket
   // close the websocket
   void close();
 
+  // callbacks
+  connect_func on_connect = nullptr;
+  close_func   on_close = nullptr;
+  error_func   on_error = nullptr;
+  read_func    on_read  = nullptr;
+
   bool is_alive() const noexcept {
     return this->conn != nullptr;
   }
 
-  // callbacks
-  close_func on_close = nullptr;
-  error_func on_error = nullptr;
-  read_func  on_read  = nullptr;
-
-  /// Server-side connection
-  WebSocket(http::Request_ptr req, 
-            http::Response_writer_ptr writer);
-  /// Client-side connection
-  //WebSocket(...);
-  ~WebSocket();
-  WebSocket(WebSocket&&);
-
   // string description for status codes
   static const char* status_code(uint16_t code);
 
+  WebSocket(WebSocket&&);
+  ~WebSocket();
+
 private:
+  WebSocket(tcp::Connection_ptr);
   WebSocket(const WebSocket&) = delete;
   WebSocket& operator= (const WebSocket&) = delete;
   WebSocket& operator= (WebSocket&&) = delete;
@@ -75,11 +81,10 @@ private:
   void tcp_closed();
   void reset();
 
-  net::tcp::Connection_ptr conn = nullptr;
+  tcp::Connection_ptr conn = nullptr;
   bool clientside;
 };
-typedef std::unique_ptr<WebSocket> WebSocket_ptr;
-
+using WebSocket_ptr = WebSocket::WebSocket_ptr;
 }
 
 #endif

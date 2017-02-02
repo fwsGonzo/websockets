@@ -40,7 +40,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
       [] (const char* data, size_t len) {
         (void) data;
         (void) len;
-        //printf("WebSocket on_read: %.*s\n", len, data);
+        printf("WebSocket on_read: %.*s\n", len, data);
       };
       
       socket->write("THIS IS A TEST CAN YOU HEAR THIS?");

@@ -161,6 +161,12 @@ encode_hash(const std::string& key)
   return base64::encode(hash);
 }
 
+WebSocket::WebSocket(tcp::Connection_ptr tcpconn)
+    : conn(tcpconn)
+{
+  assert(conn != nullptr);
+  assert(conn->is_connected());
+}
 WebSocket::WebSocket(
     http::Request_ptr req, 
     http::Response_writer_ptr writer)
@@ -423,4 +429,51 @@ const char* WebSocket::status_code(uint16_t code)
   }
 }
 
+void WebSocket::connect(
+      http::Client& client, uri::URI uri, connect_func callback)
+{
+  if (uri.scheme() != "ws") {
+    callback(nullptr); return;
+  }
+  
+  std::string hash = SHA1::oneshot_raw(std::to_string(OS::cycles_since_boot())); hash.resize(16);
+  std::string key  = base64::encode(hash);
+  
+  http::Header_set ws_headers {
+      {"Host",       uri.host().to_string()},
+      {"Connection", "Upgrade"},
+      {"Upgrade",    "WebSocket"},
+      {"Sec-WebSocket-Version", "13"},
+      {"Sec-WebSocket-Key",     key}
+  };
+  // send HTTP request
+  client.get(uri, ws_headers,
+  http::Client::Response_handler::make_packed(
+  [callback, key] (auto err, auto resp)
+  {
+    if (!err and resp->status_code() == http::Switching_Protocols)
+    {
+      /// validate response
+      if (resp->header().value("Sec-WebSocket-Version") != "13")
+      {
+        printf("missing version\n");
+        callback(nullptr); return;
+      }
+      auto hash = resp->header().value("Sec-WebSocket-Key");
+      if (hash != encode_hash(key))
+      {
+        printf("hash failed\n");
+        callback(nullptr); return;
+      }
+      
+      /// create socket
+      callback(WebSocket_ptr(new WebSocket(resp->connection())));
+    }
+    else {
+      printf("request failed\n");
+      callback(nullptr);
+    }
+  }));
 }
+
+} // namespace
