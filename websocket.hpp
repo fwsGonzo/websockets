@@ -28,14 +28,14 @@ struct WebSocket
 {
   typedef std::unique_ptr<WebSocket> WebSocket_ptr;
 
-  // client
+  // client connected event
   typedef delegate<void(WebSocket_ptr)> connect_func;
-  // server
+  // server new client event
   typedef delegate<bool(tcp::Socket, std::string)> accept_func;
 
+  typedef delegate<void(const char*, size_t)> read_func;
   typedef delegate<void(uint16_t)>    close_func;
   typedef delegate<void(std::string)> error_func;
-  typedef delegate<void(const char*, size_t)> read_func;
 
   /// Server-side connection
   WebSocket(http::Request_ptr         request,
@@ -71,15 +71,21 @@ struct WebSocket
   bool is_alive() const noexcept {
     return this->conn != nullptr;
   }
+  bool is_client() const noexcept {
+    return this->clientside;
+  }
+  const auto& get_connection() const noexcept {
+    return this->conn;
+  }
 
   // string description for status codes
   static const char* status_code(uint16_t code);
 
+  WebSocket(tcp::Connection_ptr, bool);
   WebSocket(WebSocket&&);
   ~WebSocket();
 
 private:
-  WebSocket(tcp::Connection_ptr);
   WebSocket(const WebSocket&) = delete;
   WebSocket& operator= (const WebSocket&) = delete;
   WebSocket& operator= (WebSocket&&) = delete;
@@ -89,7 +95,7 @@ private:
   void tcp_closed();
   void reset();
 
-  tcp::Connection_ptr conn = nullptr;
+  tcp::Connection_ptr conn;
   bool clientside;
 };
 using WebSocket_ptr = WebSocket::WebSocket_ptr;

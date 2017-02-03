@@ -161,18 +161,11 @@ encode_hash(const std::string& key)
   return base64::encode(hash);
 }
 
-WebSocket::WebSocket(tcp::Connection_ptr tcpconn)
-    : conn(tcpconn), clientside(true)
-{
-  assert(conn != nullptr);
-  assert(conn->is_connected());
-  conn->on_read(0, nullptr);
-}
 WebSocket::WebSocket(
     http::Request_ptr req, 
     http::Response_writer_ptr writer,
     accept_func on_accept)
-  : clientside(false)
+  : conn(nullptr), clientside(false)
 {
   // validate handshake
   auto view = req->header().value("Sec-WebSocket-Version");
@@ -367,10 +360,10 @@ void WebSocket::tcp_closed()
   this->reset();
 }
 
-WebSocket::~WebSocket()
+WebSocket::WebSocket(tcp::Connection_ptr tcpconn, bool client)
+  : conn(tcpconn), clientside(client)
 {
-  if (conn != nullptr && conn->is_writable())
-      this->close();
+  assert(conn != nullptr);
 }
 WebSocket::WebSocket(WebSocket&& other)
 {
@@ -380,6 +373,11 @@ WebSocket::WebSocket(WebSocket&& other)
   other.on_read  = std::move(on_read);
   other.conn     = std::move(conn);
   other.clientside = clientside;
+}
+WebSocket::~WebSocket()
+{
+  if (conn != nullptr && conn->is_connected())
+      this->close();
 }
 
 void WebSocket::close()
@@ -397,6 +395,7 @@ void WebSocket::reset()
   if (this->on_error) this->on_error = nullptr;
   if (this->on_read)  this->on_read  = nullptr;
   conn->setup_default_callbacks();
+  conn->on_read(0, nullptr);
   conn->close();
   conn = nullptr;
 }
@@ -490,7 +489,13 @@ void WebSocket::connect(
         callback(nullptr); return;
       }
       /// create open websocket
-      callback(WebSocket_ptr(new WebSocket(conn.release())));
+      net::tcp::Connection_ptr tcp = conn.release();
+      assert(tcp != nullptr);
+      // reset it properly
+      assert(tcp->is_connected());
+      tcp->on_read(0, nullptr);
+      // create client websocket and call callback
+      callback(WebSocket_ptr(new WebSocket(tcp, true)));
     }
   }));
 }
