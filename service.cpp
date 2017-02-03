@@ -36,6 +36,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   static const int          BUFLEN = 1000;
   BUFFER = decltype(BUFFER)(new uint8_t[BUFLEN]);
   
+  /// server ///
   using namespace http;
   static auto server = 
       std::make_unique<Server>(inet.tcp(), nullptr, std::chrono::seconds(0));
@@ -64,7 +65,9 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     }
   });
   server->listen(port);
+  /// server ///
 
+  /// client ///
   static http::Client client(inet.tcp());
   net::WebSocket::connect(client, "ws://10.0.0.42", "ws://10.0.0.1:8001/", 
   [] (net::WebSocket_ptr socket)
@@ -77,7 +80,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     websockets.push_back(std::move(socket));
     websockets.back()->write("HOLAS");
   });
-
+  /// client ///
 }
 
 void Service::start()

@@ -166,6 +166,7 @@ WebSocket::WebSocket(tcp::Connection_ptr tcpconn)
 {
   assert(conn != nullptr);
   assert(conn->is_connected());
+  conn->on_read(0, nullptr);
 }
 WebSocket::WebSocket(
     http::Request_ptr req, 
