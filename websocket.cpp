@@ -169,7 +169,8 @@ WebSocket::WebSocket(tcp::Connection_ptr tcpconn)
 }
 WebSocket::WebSocket(
     http::Request_ptr req, 
-    http::Response_writer_ptr writer)
+    http::Response_writer_ptr writer,
+    accept_func on_accept)
   : clientside(false)
 {
   // validate handshake
@@ -185,6 +186,17 @@ WebSocket::WebSocket(
     writer->write_header(http::Bad_Request);
     if (on_error) on_error("Invalid key field (too short)");
     return;
+  }
+
+  // if on_accept is set, the server must verify the client
+  if (on_accept) {
+    bool accept = on_accept(writer->connection().peer(), 
+                            req->header().value("Origin").to_string());
+    if (accept == false)
+    {
+      writer->write_header(http::Unauthorized);
+      return;
+    }
   }
 
   // create handshake response

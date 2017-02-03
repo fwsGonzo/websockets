@@ -28,14 +28,19 @@ struct WebSocket
 {
   typedef std::unique_ptr<WebSocket> WebSocket_ptr;
 
+  // client
   typedef delegate<void(WebSocket_ptr)> connect_func;
+  // server
+  typedef delegate<bool(tcp::Socket, std::string)> accept_func;
+
   typedef delegate<void(uint16_t)>    close_func;
   typedef delegate<void(std::string)> error_func;
   typedef delegate<void(const char*, size_t)> read_func;
 
   /// Server-side connection
   WebSocket(http::Request_ptr         request,
-            http::Response_writer_ptr response);
+            http::Response_writer_ptr response,
+            accept_func = nullptr);
   /// Client-side connection
   static void
   connect(http::Client& client, 
@@ -59,7 +64,6 @@ struct WebSocket
   void close();
 
   // callbacks
-  connect_func on_connect = nullptr;
   close_func   on_close = nullptr;
   error_func   on_error = nullptr;
   read_func    on_read  = nullptr;

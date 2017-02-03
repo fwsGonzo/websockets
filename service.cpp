@@ -18,6 +18,17 @@ static net::WebSocket_ptr& new_client(Args&&... args)
   return websockets.back();
 }
 
+bool accept_client(net::tcp::Socket remote, std::string origin)
+{
+  /*
+  printf("Verifying origin: \"%s\"\n"
+         "Verifying remote: \"%s\"\n", 
+         origin.c_str(), remote.to_string().c_str());
+  */
+  (void) origin;
+  return remote.address() == net::ip4::Addr(10,0,0,1);
+}
+
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
   // buffer used for testing
@@ -32,8 +43,10 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   server->on_request(
   [] (Request_ptr req, Response_writer_ptr writer)
   {
-    auto& socket = new_client(std::move(req), std::move(writer));
-    // if we are still connected, the handshake was accepted
+    // create client websocket with accept function
+    auto& socket = new_client(std::move(req), std::move(writer), accept_client);
+    
+    // if we are still connected, attempt was verified and the handshake was accepted
     if (socket->is_alive())
     {
       socket->on_read =
