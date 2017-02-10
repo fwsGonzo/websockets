@@ -27,14 +27,15 @@ namespace net {
 struct WebSocket
 {
   typedef std::unique_ptr<WebSocket> WebSocket_ptr;
-
-  // client connected event
+  // client connected
   typedef delegate<void(WebSocket_ptr)> connect_func;
-  // server new client event
+  // server new client
   typedef delegate<bool(tcp::Socket, std::string)> accept_func;
-
+  // data read (data, length)
   typedef delegate<void(const char*, size_t)> read_func;
+  // closed (status code)
   typedef delegate<void(uint16_t)>    close_func;
+  // error (reason)
   typedef delegate<void(std::string)> error_func;
 
   /// Server-side connection
@@ -63,7 +64,7 @@ struct WebSocket
   // close the websocket
   void close();
 
-  // callbacks
+  // user callbacks
   close_func   on_close = nullptr;
   error_func   on_error = nullptr;
   read_func    on_read  = nullptr;
@@ -86,6 +87,9 @@ struct WebSocket
   ~WebSocket();
 
 private:
+  tcp::Connection_ptr conn;
+  bool clientside;
+
   WebSocket(const WebSocket&) = delete;
   WebSocket& operator= (const WebSocket&) = delete;
   WebSocket& operator= (WebSocket&&) = delete;
@@ -94,9 +98,6 @@ private:
   void failure(const std::string&);
   void tcp_closed();
   void reset();
-
-  tcp::Connection_ptr conn;
-  bool clientside;
 };
 using WebSocket_ptr = WebSocket::WebSocket_ptr;
 }

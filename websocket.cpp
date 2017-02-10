@@ -391,11 +391,11 @@ void WebSocket::close()
 
 void WebSocket::reset()
 {
-  if (this->on_close) this->on_close = nullptr;
-  if (this->on_error) this->on_error = nullptr;
-  if (this->on_read)  this->on_read  = nullptr;
-  conn->setup_default_callbacks();
-  conn->on_read(0, nullptr);
+  this->on_close = nullptr;
+  this->on_error = nullptr;
+  this->on_read  = nullptr;
+  conn->reset_callbacks();
+  //conn->on_read(0, nullptr);
   conn->close();
   conn = nullptr;
 }
@@ -464,7 +464,7 @@ void WebSocket::connect(
   
   http::Header_set ws_headers {
       {"Origin",     origin  },
-      {"Host",       remote.str()},
+      {"Host",       remote.to_string()},
       {"Connection", "Upgrade"  },
       {"Upgrade",    "WebSocket"},
       {"Sec-WebSocket-Version", "13"},
