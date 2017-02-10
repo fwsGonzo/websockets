@@ -157,8 +157,9 @@ static inline std::string
 encode_hash(const std::string& key)
 {
   static const std::string GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  std::string hash  = SHA1::oneshot_raw(key + GUID);
-  return base64::encode(hash);
+  static SHA1  sha;
+  sha.update(key + GUID);
+  return base64::encode(sha.as_raw());
 }
 
 WebSocket::WebSocket(
@@ -367,7 +368,6 @@ WebSocket::WebSocket(tcp::Connection_ptr tcpconn, bool client)
 }
 WebSocket::WebSocket(WebSocket&& other)
 {
-  printf("MOVED\n");
   other.on_close = std::move(on_close);
   other.on_error = std::move(on_error);
   other.on_read  = std::move(on_read);
@@ -395,14 +395,12 @@ void WebSocket::reset()
   this->on_error = nullptr;
   this->on_read  = nullptr;
   conn->reset_callbacks();
-  //conn->on_read(0, nullptr);
   conn->close();
   conn = nullptr;
 }
 
 void WebSocket::failure(const std::string& reason)
 {
-  printf("Failure: %s\n", reason.c_str());
   if (conn != nullptr) conn->close();
   if (this->on_error) on_error(reason);
 }
@@ -471,7 +469,6 @@ void WebSocket::connect(
       {"Sec-WebSocket-Key",     key }
   };
   // send HTTP request
-  printf("Sending request with key %s (len=%u)\n", key.c_str(), key.size());
   client.get(remote, ws_headers,
   http::Client::Response_handler::make_packed(
   [callback, key] (auto err, auto resp, auto& conn)
