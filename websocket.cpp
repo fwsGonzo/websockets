@@ -488,9 +488,7 @@ void WebSocket::connect(
       /// create open websocket
       net::tcp::Connection_ptr tcp = conn.release();
       assert(tcp != nullptr);
-      // reset it properly
       assert(tcp->is_connected());
-      tcp->on_read(0, nullptr);
       // create client websocket and call callback
       callback(WebSocket_ptr(new WebSocket(tcp, true)));
     }
