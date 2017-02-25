@@ -48,7 +48,6 @@ const char* opcode_string(uint16_t code)
       return "Reserved (unspecified)";
   }
 }
-extern void print_backtrace();
 
 namespace net
 {
@@ -172,14 +171,12 @@ WebSocket::WebSocket(
   auto view = req->header().value("Sec-WebSocket-Version");
   if (view == nullptr || view != "13") {
     writer->write_header(http::Bad_Request);
-    if (on_error) on_error("Invalid version field");
     return;
   }
 
   auto key = req->header().value("Sec-WebSocket-Key");
   if (key == nullptr || key.size() < 16) {
     writer->write_header(http::Bad_Request);
-    if (on_error) on_error("Invalid key field (too short)");
     return;
   }
 
@@ -293,11 +290,11 @@ static size_t make_header(char* dest, size_t len, uint8_t code, bool client)
 
 void WebSocket::write(const char* buffer, size_t len, mode_t mode)
 {
-  if (this->conn == nullptr) {
+  if (UNLIKELY(this->conn == nullptr)) {
     failure("write: Already closed");
     return;
   }
-  if (this->conn->is_writable() == false) {
+  if (UNLIKELY(this->conn->is_writable() == false)) {
     failure("write: Connection not writable");
     return;
   }
@@ -322,15 +319,15 @@ void WebSocket::write(const char* buffer, size_t len, mode_t mode)
 }
 void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
 {
-  if (this->conn == nullptr) {
+  if (UNLIKELY(this->conn == nullptr)) {
     failure("write: Already closed");
     return;
   }
-  if (this->conn->is_writable() == false) {
+  if (UNLIKELY(this->conn->is_writable() == false)) {
     failure("write: Connection not writable");
     return;
   }
-  if (clientside == true) {
+  if (UNLIKELY(clientside == true)) {
     failure("write: Client-side does not support sending shared buffers");
     return;
   }
@@ -338,14 +335,16 @@ void WebSocket::write(net::tcp::buffer_t buffer, size_t len, mode_t mode)
   /// write header
   char header[HEADER_MAXLEN];
   int  header_len = make_header(header, len, opcode, false);
+  assert(header_len < HEADER_MAXLEN);
   this->conn->write(header, header_len);
   /// write shared buffer
   this->conn->write(buffer, len);
 }
 bool WebSocket::write_opcode(uint8_t code, const char* buffer, size_t datalen)
 {
-  if (conn == nullptr) return false;
-  if (conn->is_writable() == false) return false;
+  if (UNLIKELY(conn == nullptr || conn->is_writable() == false)) {
+    return false;
+  }
   /// write header
   char header[HEADER_MAXLEN];
   int  header_len = make_header(header, datalen, code, clientside);
@@ -383,7 +382,8 @@ WebSocket::~WebSocket()
 void WebSocket::close()
 {
   /// send CLOSE message
-  this->write_opcode(OPCODE_CLOSE, nullptr, 0);
+  if (this->conn->is_writable())
+      this->write_opcode(OPCODE_CLOSE, nullptr, 0);
   /// close and unset socket
   this->conn->close();
   this->reset();

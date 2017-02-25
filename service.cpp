@@ -1,4 +1,4 @@
-#include <service>
+#include <os>
 #include <net/inet4>
 #include <deque>
 #include "websocket.hpp"
@@ -57,7 +57,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
         printf("WebSocket on_read: %.*s\n", len, data);
       };
       
-      socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
+      //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
       for (int i = 0; i < 1000; i++)
           socket->write(BUFFER, BUFLEN, net::WebSocket::BINARY);
       
@@ -67,6 +67,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   server->listen(port);
   /// server ///
 
+return;
   /// client ///
   static http::Client client(inet.tcp());
   net::WebSocket::connect(client, "ws://10.0.0.42", "ws://10.0.0.1:8001/", 
@@ -83,17 +84,30 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   /// client ///
 }
 
+#include <smp>
 void Service::start()
 {
   // add own serial out after service start
   OS::add_stdout_default_serial();
+  SMP::add_task(
+  [] {
+    auto& inet = net::Inet4::ifconfig<>(0);
+    inet.network_config(
+        {  10, 0,  0, 42 },  // IP
+        { 255,255,255, 0 },  // Netmask
+        {  10, 0,  0,  1 },  // Gateway
+        {  10, 0,  0,  1 }); // DNS
+    inet.move_to_this_cpu();
 
-  auto& inet = net::Inet4::ifconfig<>(0);
-  inet.network_config(
-      {  10, 0,  0, 42 },  // IP
-      { 255,255,255, 0 },  // Netmask
-      {  10, 0,  0,  1 },  // Gateway
-      {  10, 0,  0,  1 }); // DNS
+    websocket_service(inet, 8000);
+  });
+  SMP::signal();
+}
 
-  websocket_service(inet, 8000);
+#include <profile>
+#include <timers>
+void Service::ready()
+{
+  auto stats = ScopedProfiler::get_statistics();
+  printf("%.*s\n", stats.size(), stats.c_str());
 }
