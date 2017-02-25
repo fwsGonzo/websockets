@@ -97,7 +97,6 @@ void Service::start()
         { 255,255,255, 0 },  // Netmask
         {  10, 0,  0,  1 },  // Gateway
         {  10, 0,  0,  1 }); // DNS
-    inet.move_to_this_cpu();
 
     websocket_service(inet, 8000);
   });
