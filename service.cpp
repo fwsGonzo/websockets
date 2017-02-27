@@ -3,6 +3,8 @@
 #include <deque>
 #include "websocket.hpp"
 
+//#define USE_SMP
+
 static std::deque<net::WebSocket_ptr> websockets;
 
 template <typename... Args>
@@ -84,11 +86,10 @@ return;
   /// client ///
 }
 
+#ifdef USE_SMP
 #include <smp>
 void Service::start()
 {
-  // add own serial out after service start
-  OS::add_stdout_default_serial();
   SMP::add_task(
   [] {
     auto& inet = net::Inet4::ifconfig<>(0);
@@ -102,7 +103,18 @@ void Service::start()
   });
   SMP::signal();
 }
+#else
+void Service::start()
+{
+  auto& inet = net::Inet4::ifconfig<>(0);
+  inet.network_config(
+      {  10, 0,  0, 42 },  // IP
+      { 255,255,255, 0 },  // Netmask
+      {  10, 0,  0,  1 },  // Gateway
+      {  10, 0,  0,  1 }); // DNS
 
+  websocket_service(inet, 8000);
+}
 #include <profile>
 #include <timers>
 void Service::ready()
@@ -110,3 +122,4 @@ void Service::ready()
   auto stats = ScopedProfiler::get_statistics();
   printf("%.*s\n", stats.size(), stats.c_str());
 }
+#endif
