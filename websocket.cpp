@@ -360,8 +360,8 @@ void WebSocket::tcp_closed()
   this->reset();
 }
 
-WebSocket::WebSocket(tcp::Connection_ptr tcpconn, bool client)
-  : conn(tcpconn), clientside(client)
+WebSocket::WebSocket(net::Stream_ptr stream_ptr, bool client)
+  : conn(std::move(stream_ptr)), clientside(client)
 {
   assert(conn != nullptr);
 }
@@ -486,11 +486,10 @@ void WebSocket::connect(
         callback(nullptr); return;
       }
       /// create open websocket
-      net::tcp::Connection_ptr tcp = conn.release();
-      assert(tcp != nullptr);
-      assert(tcp->is_connected());
+      auto stream = conn.release();
+      assert(stream->is_connected());
       // create client websocket and call callback
-      callback(WebSocket_ptr(new WebSocket(tcp, true)));
+      callback(WebSocket_ptr(new WebSocket(std::move(stream), true)));
     }
   }));
 }

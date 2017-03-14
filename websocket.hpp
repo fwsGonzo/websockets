@@ -82,12 +82,12 @@ struct WebSocket
   // string description for status codes
   static const char* status_code(uint16_t code);
 
-  WebSocket(tcp::Connection_ptr, bool);
+  WebSocket(net::Stream_ptr, bool);
   WebSocket(WebSocket&&);
   ~WebSocket();
 
 private:
-  tcp::Connection_ptr conn;
+  net::Stream_ptr conn;
   bool clientside;
 
   WebSocket(const WebSocket&) = delete;

@@ -1,6 +1,5 @@
 {
   "net" : [{"device" : "virtio"}],
   "cpu" : "host",
-  "mem" : 256,
-  "smp" : 2
+  "mem" : 256
 }

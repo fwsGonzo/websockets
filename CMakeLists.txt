@@ -1,11 +1,10 @@
 cmake_minimum_required(VERSION 2.8.9)
-set(CMAKE_TOOLCHAIN_FILE $ENV{INCLUDEOS_PREFIX}/includeos/i686-elf-toolchain.cmake)
-project(service)
-
 # IncludeOS install location
 if (NOT DEFINED ENV{INCLUDEOS_PREFIX})
   set(ENV{INCLUDEOS_PREFIX} /usr/local)
 endif()
+set(CMAKE_TOOLCHAIN_FILE $ENV{INCLUDEOS_PREFIX}/includeos/i686-elf-toolchain.cmake)
+project(service)
 
 # Human-readable name of your service
 set(SERVICE_NAME "WebSockets service")
@@ -18,7 +17,7 @@ set(MAX_MEM 256)
 
 # Source files to be linked with OS library parts to form bootable image
 set(SOURCES
-    service.cpp  websocket.cpp
+    service.cpp
   )
 
 # To add your own include paths:
@@ -29,8 +28,10 @@ set(LOCAL_INCLUDES )
 set(DRIVERS
   virtionet
   silent_start
-  #heap_debugging
+  heap_debugging
   )
 
 # include service build script
 include($ENV{INCLUDEOS_PREFIX}/includeos/service.cmake)
+
+diskbuilder(drive)
