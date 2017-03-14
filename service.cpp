@@ -94,7 +94,11 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
       printf("WS Connection failed!\n");
       return;
     }
-    printf("Connected!\n");
+    socket->on_error = 
+    [] (std::string reason) {
+      printf("Socket error: %s\n", reason.c_str());
+    };
+    
     socket->write("HOLAS\r\n");
     websockets.push_back(std::move(socket));
   });
