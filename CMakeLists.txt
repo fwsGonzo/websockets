@@ -28,7 +28,7 @@ set(LOCAL_INCLUDES )
 set(DRIVERS
   virtionet
   silent_start
-  heap_debugging
+  #heap_debugging
   )
 
 # include service build script
