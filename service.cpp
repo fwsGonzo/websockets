@@ -12,7 +12,7 @@ static http::WebSocket_ptr& new_client(http::WebSocket_ptr socket)
   if (client->is_alive() == false) {
     return client = std::move(socket);
   }
-  
+
   websockets.push_back(std::move(socket));
   return websockets.back();
 }
@@ -21,7 +21,7 @@ bool accept_client(net::tcp::Socket remote, std::string origin)
 {
   /*
   printf("Verifying origin: \"%s\"\n"
-         "Verifying remote: \"%s\"\n", 
+         "Verifying remote: \"%s\"\n",
          origin.c_str(), remote.to_string().c_str());
   */
   (void) origin;
@@ -29,7 +29,7 @@ bool accept_client(net::tcp::Socket remote, std::string origin)
 }
 
 #include <memdisk>
-#include <https>
+#include <http>
 
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
@@ -69,11 +69,11 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
             (void) len;
             printf("WebSocket on_read: %.*s\n", len, data);
           };
-          
+
           //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
           for (int i = 0; i < 1000; i++)
               socket->write(BUFFER, BUFLEN, http::WebSocket::BINARY);
-          
+
           //socket->close();
         }
       },
@@ -86,23 +86,26 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 
   /// client ///
   static http::Client client(inet.tcp());
-  http::WebSocket::connect(client, "ws://10.0.0.1:8001/", 
+  http::WebSocket::connect(client, "ws://10.0.0.1:8001/",
   [] (http::WebSocket_ptr socket)
   {
     if (!socket) {
       printf("WS Connection failed!\n");
       return;
     }
-    socket->on_error = 
+    socket->on_error =
     [] (std::string reason) {
       printf("Socket error: %s\n", reason.c_str());
     };
-    
+
     socket->write("HOLAS\r\n");
     websockets.push_back(std::move(socket));
   });
   /// client ///
 }
+
+extern uint16_t __xsave_enabled;
+extern uint16_t __avx_enabled;
 
 void Service::start()
 {
@@ -112,9 +115,11 @@ void Service::start()
       { 255,255,255, 0 },  // Netmask
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
-
-  
   websocket_service(inet, 8000);
+
+  printf("XSAVE enabled: %u\n", __xsave_enabled);
+  printf("AVX   enabled: %u\n", __avx_enabled);
+  panic("TEST");
 }
 #include <profile>
 #include <timers>
