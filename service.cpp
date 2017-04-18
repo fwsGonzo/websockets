@@ -17,7 +17,7 @@ static http::WebSocket_ptr& new_client(http::WebSocket_ptr socket)
   return websockets.back();
 }
 
-bool accept_client(net::tcp::Socket remote, std::string origin)
+bool accept_client(net::Socket remote, std::string origin)
 {
   /*
   printf("Verifying origin: \"%s\"\n"
@@ -29,7 +29,7 @@ bool accept_client(net::tcp::Socket remote, std::string origin)
 }
 
 #include <memdisk>
-#include <http>
+#include <https>
 
 void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
@@ -67,7 +67,7 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
           [] (const char* data, size_t len) {
             (void) data;
             (void) len;
-            printf("WebSocket on_read: %.*s\n", len, data);
+            printf("WebSocket on_read: %.*s\n", (int) len, data);
           };
 
           //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
@@ -104,9 +104,6 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   /// client ///
 }
 
-extern uint16_t __xsave_enabled;
-extern uint16_t __avx_enabled;
-
 void Service::start()
 {
   auto& inet = net::Inet4::ifconfig<>(0);
@@ -116,15 +113,18 @@ void Service::start()
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
   websocket_service(inet, 8000);
-
-  printf("XSAVE enabled: %u\n", __xsave_enabled);
-  printf("AVX   enabled: %u\n", __avx_enabled);
-  panic("TEST");
 }
 #include <profile>
 #include <timers>
 void Service::ready()
 {
+  printf("Service::ready\n");
+  using namespace std::chrono;
+  Timers::periodic(50ms, 50ms,
+  [] (auto) {
+    static int d = 0;
+    printf("Line %d\n", ++d);
+  });
   //auto stats = ScopedProfiler::get_statistics();
   //printf("%.*s\n", stats.size(), stats.c_str());
 }
