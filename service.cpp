@@ -30,8 +30,9 @@ bool accept_client(net::Socket remote, std::string origin)
 
 #include <memdisk>
 #include <https>
+#include <util/sha1.hpp>
 
-void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
+static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
   fs::memdisk().init_fs(
   [&inet, port] (auto err, auto& filesys) {
@@ -48,6 +49,12 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     auto ca_key  = filesys.stat("/test.key");
     // load server private key
     auto srv_key = filesys.stat("/server.key");
+
+    {
+      printf("test.der:   %s\n", SHA1::oneshot_hex(ca_cert.read()).c_str());
+      printf("test.key:   %s\n", SHA1::oneshot_hex(ca_key.read()).c_str());
+      printf("server.key: %s\n", SHA1::oneshot_hex(srv_key.read()).c_str());
+    }
 
     using namespace http;
     // Set up a TCP server on port 443
@@ -112,19 +119,23 @@ void Service::start()
       { 255,255,255, 0 },  // Netmask
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
-  websocket_service(inet, 8000);
+
+  //websocket_service(inet, 8000);
+
+  auto& echo = inet.tcp().listen(7);
+  echo.on_connect(
+    [] (auto conn) {
+      conn->on_read(1024,
+      [conn] (auto buf, size_t len) {
+        conn->write(buf, len);
+      });
+    });
 }
 #include <profile>
 #include <timers>
 void Service::ready()
 {
-  printf("Service::ready\n");
   using namespace std::chrono;
-  Timers::periodic(50ms, 50ms,
-  [] (auto) {
-    static int d = 0;
-    printf("Line %d\n", ++d);
-  });
   //auto stats = ScopedProfiler::get_statistics();
   //printf("%.*s\n", stats.size(), stats.c_str());
 }
