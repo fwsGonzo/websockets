@@ -111,6 +111,7 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   /// client ///
 }
 
+static int counter = 0;
 void Service::start()
 {
   auto& inet = net::Inet4::ifconfig<>(0);
@@ -120,7 +121,7 @@ void Service::start()
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
 
-  //websocket_service(inet, 8000);
+  websocket_service(inet, 8000);
 
   auto& echo = inet.tcp().listen(7);
   echo.on_connect(
@@ -132,10 +133,8 @@ void Service::start()
     });
 }
 #include <profile>
-#include <timers>
 void Service::ready()
 {
-  using namespace std::chrono;
   //auto stats = ScopedProfiler::get_statistics();
   //printf("%.*s\n", stats.size(), stats.c_str());
 }
