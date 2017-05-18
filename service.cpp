@@ -111,7 +111,6 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
   /// client ///
 }
 
-static int counter = 0;
 void Service::start()
 {
   auto& inet = net::Inet4::ifconfig<>(0);
@@ -132,6 +131,7 @@ void Service::start()
       });
     });
 }
+
 #include <profile>
 void Service::ready()
 {
