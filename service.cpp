@@ -66,6 +66,9 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     static WS_server_connector ws_serve(
       [] (WebSocket_ptr ws)
       {
+        // sometimes we get failed WS connections
+        if (ws == nullptr) return;
+
         auto& socket = new_client(std::move(ws));
         // if we are still connected, attempt was verified and the handshake was accepted
         if (socket->is_alive())
