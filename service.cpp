@@ -1,12 +1,11 @@
 #include <os>
 #include <net/inet4>
 #include <deque>
-#include <net/http/websocket.hpp>
-#include <net/http/ws_connector.hpp>
+#include <net/ws/connector.hpp>
 
-static std::deque<http::WebSocket_ptr> websockets;
+static std::deque<net::WebSocket_ptr> websockets;
 
-static http::WebSocket_ptr& new_client(http::WebSocket_ptr socket)
+static net::WebSocket_ptr& new_client(net::WebSocket_ptr socket)
 {
   for (auto& client : websockets)
   if (client->is_alive() == false) {
@@ -56,23 +55,21 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     static Server httpd(inet.tcp());
 
     // Set up server connector
-    static WS_server_connector ws_serve(
-      [] (WebSocket_ptr ws)
+    static net::WS_server_connector ws_serve(
+      [] (net::WebSocket_ptr ws)
       {
         auto& socket = new_client(std::move(ws));
         // if we are still connected, attempt was verified and the handshake was accepted
         if (socket->is_alive())
         {
           socket->on_read =
-          [] (const char* data, size_t len) {
-            (void) data;
-            (void) len;
-            printf("WebSocket on_read: %.*s\n", (int) len, data);
+          [] (auto message) {
+            printf("WebSocket on_read: %.*s\n", (int) message->size(), message->data());
           };
 
           //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
           for (int i = 0; i < 1000; i++)
-              socket->write(BUFFER, BUFLEN, http::WebSocket::BINARY);
+              socket->write(BUFFER, BUFLEN, net::op_code::BINARY);
 
           //socket->close();
         }
@@ -86,8 +83,8 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 
   /// client ///
   static http::Client client(inet.tcp());
-  http::WebSocket::connect(client, "ws://10.0.0.1:8001/",
-  [] (http::WebSocket_ptr socket)
+  net::WebSocket::connect(client, "ws://10.0.0.1:8001/",
+  [] (net::WebSocket_ptr socket)
   {
     if (!socket) {
       printf("WS Connection failed!\n");
@@ -115,16 +112,8 @@ void Service::start()
   websocket_service(inet, 8000);
 }
 #include <profile>
-#include <timers>
 void Service::ready()
 {
-  printf("Service::ready\n");
-  using namespace std::chrono;
-  Timers::periodic(50ms, 50ms,
-  [] (auto) {
-    static int d = 0;
-    printf("Line %d\n", ++d);
-  });
   //auto stats = ScopedProfiler::get_statistics();
   //printf("%.*s\n", stats.size(), stats.c_str());
 }
