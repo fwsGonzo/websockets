@@ -24,7 +24,7 @@ set(LOCAL_INCLUDES )
 set(DRIVERS
   virtionet
   #vmxnet3
-  #silent_start
+  silent_start
   #heap_debugging
   )
 

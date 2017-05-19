@@ -29,8 +29,9 @@ bool accept_client(net::Socket remote, std::string origin)
 
 #include <memdisk>
 #include <https>
+#include <util/sha1.hpp>
 
-void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
+static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
   fs::memdisk().init_fs(
   [&inet, port] (auto err, auto& filesys) {
@@ -48,6 +49,12 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     // load server private key
     auto srv_key = filesys.stat("/server.key");
 
+    {
+      printf("test.der:   %s\n", SHA1::oneshot_hex(ca_cert.read()).c_str());
+      printf("test.key:   %s\n", SHA1::oneshot_hex(ca_key.read()).c_str());
+      printf("server.key: %s\n", SHA1::oneshot_hex(srv_key.read()).c_str());
+    }
+
     using namespace http;
     // Set up a TCP server on port 443
     //static http::Secure_server httpd(
@@ -58,6 +65,9 @@ void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     static net::WS_server_connector ws_serve(
       [] (net::WebSocket_ptr ws)
       {
+        // sometimes we get failed WS connections
+        if (ws == nullptr) return;
+
         auto& socket = new_client(std::move(ws));
         // if we are still connected, attempt was verified and the handshake was accepted
         if (socket->is_alive())
@@ -109,8 +119,19 @@ void Service::start()
       { 255,255,255, 0 },  // Netmask
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
+
   websocket_service(inet, 8000);
+
+  auto& echo = inet.tcp().listen(7);
+  echo.on_connect(
+    [] (auto conn) {
+      conn->on_read(1024,
+      [conn] (auto buf, size_t len) {
+        conn->write(buf, len);
+      });
+    });
 }
+
 #include <profile>
 void Service::ready()
 {
