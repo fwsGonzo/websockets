@@ -28,8 +28,7 @@ bool accept_client(net::Socket remote, std::string origin)
 }
 
 #include <memdisk>
-#include <https>
-#include <util/sha1.hpp>
+#include "tls_smp_server.hpp"
 
 static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
 {
@@ -49,17 +48,11 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     // load server private key
     auto srv_key = filesys.stat("/server.key");
 
-    {
-      printf("test.der:   %s\n", SHA1::oneshot_hex(ca_cert.read()).c_str());
-      printf("test.key:   %s\n", SHA1::oneshot_hex(ca_key.read()).c_str());
-      printf("server.key: %s\n", SHA1::oneshot_hex(srv_key.read()).c_str());
-    }
-
     using namespace http;
     // Set up a TCP server on port 443
-    //static http::Secure_server httpd(
-    //    "blabla", ca_key, ca_cert, srv_key, inet.tcp());
-    static Server httpd(inet.tcp());
+    static http::TLS_SMP_server httpd(
+        "blabla", ca_key, ca_cert, srv_key, inet.tcp());
+    //static Server httpd(inet.tcp());
 
     // Set up server connector
     static net::WS_server_connector ws_serve(

@@ -15,6 +15,7 @@ set(BINARY       "websockets")
 # Source files to be linked with OS library parts to form bootable image
 set(SOURCES
     service.cpp
+    tls_smp_server.cpp
   )
 
 # To add your own include paths:
@@ -24,7 +25,7 @@ set(LOCAL_INCLUDES )
 set(DRIVERS
   virtionet
   #vmxnet3
-  silent_start
+  #silent_start
   #heap_debugging
   )
 

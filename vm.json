@@ -1,4 +1,5 @@
 {
   "net" : [{"device" : "virtio"}],
-  "mem" : 128
+  "mem" : 128,
+  "smp" : 16
 }
