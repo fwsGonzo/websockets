@@ -22,6 +22,7 @@
 #include <net/http/server.hpp>
 #include <fs/dirent.hpp>
 #include "tls_smp_client.hpp"
+#include "tls_smp_system.hpp"
 
 namespace http {
 
@@ -67,6 +68,8 @@ public:
       fs::Dirent& server_key);
 
 private:
+  SMP_ARRAY<tls_smp_system> system;
+
   /**
    * @brief      Binds TCP to pass all new connections to this on_connect.
    *
@@ -80,13 +83,6 @@ private:
    * @param[in]  conn  The TCP connection
    */
   void on_connect(TCP_conn conn) override;
-
-  /**
-   * @brief      Gets the random number generator.
-   *
-   * @return     The random number generator.
-   */
-  static Botan::RandomNumberGenerator& get_rng();
 
 }; // < class Secure_server
 

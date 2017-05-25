@@ -17,62 +17,27 @@
 
 #include "tls_smp_server.hpp"
 #include "tls_smp_system.hpp"
-#include <botan/system_rng.h>
-#include <botan/pkcs8.h>
 #include <smp>
-static SMP_ARRAY<tls_smp_system> tls_system;
-
-inline static auto& get_rng() { return Botan::system_rng(); }
-
-static inline
-std::unique_ptr<Botan::Private_Key> read_pkey(fs::Dirent& key_file)
-{
-  assert(key_file.is_file());
-  Botan::DataSource_Memory data{key_file.read()};
-  return std::unique_ptr<Botan::Private_Key>(Botan::PKCS8::load_key(data, get_rng()));
-}
-
-void tls_smp_system::load_credentials(
-      const std::string&  server_name,
-      fs::Dirent&         file_ca_key,
-      fs::Dirent&         file_ca_cert,
-      fs::Dirent&         file_server_key)
-{
-  // load CA certificate
-  assert(file_ca_cert.is_valid());
-  auto ca_cert = file_ca_cert.read();
-  std::vector<uint8_t> vca_cert(ca_cert.begin(), ca_cert.end());
-  // load CA private key
-  auto ca_key = read_pkey(file_ca_key);
-  // load server private key
-  auto srv_key = read_pkey(file_server_key);
-
-  auto* credman = net::Credman::create(
-          server_name,
-          get_rng(),
-          std::move(ca_key),
-          Botan::X509_Certificate(vca_cert),
-          std::move(srv_key));
-
-  this->credman.reset(credman);
-}
 
 namespace http
 {
-  Botan::RandomNumberGenerator& TLS_SMP_server::get_rng()
-  {
-    return ::get_rng();
-  }
-
   void TLS_SMP_server::load_credentials(
     const std::string& server_name,
-    fs::Dirent& file_ca_key,
-    fs::Dirent& file_ca_cert,
-    fs::Dirent& file_server_key)
+    fs::Dirent& ca_key,
+    fs::Dirent& ca_cert,
+    fs::Dirent& server_key)
   {
-    for (auto& task : tls_system)
-      task.load_credentials(
-          server_name, file_ca_key, file_ca_cert, file_server_key);
+    for (int i = 0; i < (int) system.size(); i++)
+    {
+      SMP::add_task(
+      SMP::task_func::make_packed(
+      [this, server_name, ca_key, ca_cert, server_key] () mutable
+      {
+        PER_CPU(system).load_credentials(
+            server_name, ca_key, ca_cert, server_key);
+      }), i);
+      SMP::signal(i);
+    }
   }
 
   void TLS_SMP_server::bind(const uint16_t port)
@@ -86,32 +51,42 @@ namespace http
     // round-robin select vcpu
     static int next_cpu = 1;
     int current_cpu = next_cpu++;
-    if (next_cpu > SMP::cpu_count()) next_cpu = 1;
+    if (next_cpu >= SMP::cpu_count()) next_cpu = 1;
+
+    // create TCP stream
+    auto* ptr = new net::tls::SMP_client(conn, current_cpu);
 
     // create TLS stream on selected vcpu
     SMP::add_task(
-    [this, conn] ()
+    [this, ptr] ()
     {
-      auto& system = PER_CPU(tls_system);
-      auto* ptr = new net::tls::SMP_client(
-            std::move(conn), get_rng(), *system.credman);
+      auto& sys = PER_CPU(system);
+      net::tls::SMP_client::State_ptr state;
+      state.reset(new net::tls::SMP_TLS_State(
+                  *ptr,
+                  sys.get_rng(),
+                  *sys.credman));
+      ptr->assign_tls(std::move(state));
+    }, current_cpu);
+    SMP::signal(current_cpu);
 
-      ptr->on_connect(
-      [this, ptr] (net::Stream&)
-      {
-        // create and pass TLS socket
-        // this part is run back on main vcpu
-        connect(std::unique_ptr<net::tls::SMP_client>(ptr));
-      });
-
-      // this is ok due to the created Server_connection inside
-      // connect assigns a new on_close
-      ptr->on_close([ptr] {
-        // this part is run back on main vcpu
-        delete ptr;
-      });
+    // delay-set callbacks NOTE: don't move!
+    ptr->on_connect(
+    [this, ptr] (net::Stream&)
+    {
+      // create and pass TLS socket
+      // this part is run back on main vcpu
+      assert(SMP::cpu_id() == 0);
+      connect(std::unique_ptr<net::tls::SMP_client>(ptr));
     });
-    SMP::signal();
+
+    // this is ok due to the created Server_connection inside
+    // connect assigns a new on_close
+    ptr->on_close([ptr] {
+      // this part is run back on main vcpu
+      assert(SMP::cpu_id() == 0);
+      delete ptr;
+    });
   }
 
 }
