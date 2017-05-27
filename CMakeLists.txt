@@ -19,6 +19,7 @@ set(SOURCES
     tls_smp_server.cpp
     tls_smp_client.cpp
     tls_smp_system.cpp
+    smp_tests.cpp
   )
 
 # To add your own include paths:
