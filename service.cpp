@@ -3,18 +3,35 @@
 #include <deque>
 #include <net/ws/connector.hpp>
 #include "tcp_smp.hpp"
+#include <memdisk>
+#include <https>
 
-static std::deque<net::WebSocket_ptr> websockets;
+// configuration
+static const bool ENABLE_TLS   = false;
+static const bool TCP_OVER_SMP = true;
+
+
+struct alignas(SMP_ALIGN) HTTP_server
+{
+  http::Server*      server = nullptr;
+  net::tcp::buffer_t buffer = nullptr;
+  net::WS_server_connector* ws_serve = nullptr;
+  // websocket clients
+  std::deque<net::WebSocket_ptr> clients;
+};
+static SMP_ARRAY<HTTP_server> httpd;
+
 
 static net::WebSocket_ptr& new_client(net::WebSocket_ptr socket)
 {
-  for (auto& client : websockets)
+  auto& sys = PER_CPU(httpd);
+  for (auto& client : sys.clients)
   if (client->is_alive() == false) {
     return client = std::move(socket);
   }
 
-  websockets.push_back(std::move(socket));
-  return websockets.back();
+  sys.clients.push_back(std::move(socket));
+  return sys.clients.back();
 }
 
 bool accept_client(net::Socket remote, std::string origin)
@@ -28,22 +45,9 @@ bool accept_client(net::Socket remote, std::string origin)
   return remote.address() == net::ip4::Addr(10,0,0,1);
 }
 
-#include <memdisk>
-#include <https>
-
-struct alignas(SMP_ALIGN) HTTP_server
-{
-  http::Server*      server = nullptr;
-  net::tcp::buffer_t buffer = nullptr;
-  net::WS_server_connector* ws_serve = nullptr;
-};
-static SMP_ARRAY<HTTP_server> httpd;
-
 void websocket_service(net::TCP& tcp, uint16_t port)
 {
-  // toggle me
-  static const bool SECURE = false;
-  if (SECURE)
+  if (ENABLE_TLS)
   {
     auto& filesys = fs::memdisk().fs();
     // load CA certificate
@@ -140,15 +144,18 @@ void Service::start()
     };
 
     socket->write("HOLAS\r\n");
-    websockets.push_back(std::move(socket));
+    PER_CPU(httpd).clients.push_back(std::move(socket));
   });
   /// client ///
 
-  // run websocket server locally
-  websocket_service(inet.tcp(), 8000);
-
-  // run websocket servers on CPUs
-  //init_tcp_smp_system(inet, tcp_service);
+  if (TCP_OVER_SMP == false)
+  {
+    // run websocket server locally
+    websocket_service(inet.tcp(), 8000);
+  } else {
+    // run websocket servers on CPUs
+    init_tcp_smp_system(inet, tcp_service);
+  }
 }
 
 static void recursive_task();
