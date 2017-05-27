@@ -37,6 +37,7 @@ class SMP_TLS_State : public Botan::TLS::Callbacks
 {
 public:
   using Connection_ptr = tcp::Connection_ptr;
+  using Buffer = std::unique_ptr<uint8_t[]>;
 
   SMP_TLS_State(
         SMP_client& in_stream,
@@ -183,7 +184,7 @@ public:
     // create buffer we have control over
     auto* data = new uint8_t[n];
     memcpy(data, buffer, n);
-    buffer_t buf(data, std::default_delete<uint8_t> ());
+    buffer_t buf(data, std::default_delete<uint8_t[]> ());
     // ship it to vcpu
     write(std::move(buf), n);
   }
@@ -225,7 +226,7 @@ protected:
     TLS_PRINT("TCP %d bsp_write(): %lu bytes on %d\n",
               get_id(), n, SMP::cpu_id());
     assert(SMP::cpu_id() == 0);
-    Stream::write(buf, n);
+    Stream::write(std::move(buf), n);
   }
   void bsp_read(buffer_t buf, const size_t n)
   {
@@ -237,7 +238,7 @@ protected:
     SMP::add_task(
     [this, buff = std::move(buf), n] () {
       assert(tls_state);
-      this->tls_state->read(buff, n);
+      this->tls_state->read(std::move(buff), n);
     }, this->system_cpu);
     SMP::signal(this->system_cpu);
   }

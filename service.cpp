@@ -2,6 +2,7 @@
 #include <net/inet4>
 #include <deque>
 #include <net/ws/connector.hpp>
+#include "tcp_smp.hpp"
 
 static std::deque<net::WebSocket_ptr> websockets;
 
@@ -28,19 +29,23 @@ bool accept_client(net::Socket remote, std::string origin)
 }
 
 #include <memdisk>
-#include "tls_smp_server.hpp"
+#include <https>
 
-static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
+struct alignas(SMP_ALIGN) HTTP_server
 {
-  fs::memdisk().init_fs(
-  [&inet, port] (auto err, auto& filesys) {
-    assert(!err);
+  http::Server*      server = nullptr;
+  net::tcp::buffer_t buffer = nullptr;
+  net::WS_server_connector* ws_serve = nullptr;
+};
+static SMP_ARRAY<HTTP_server> httpd;
 
-    // buffer used for testing
-    static net::tcp::buffer_t BUFFER;
-    static const int          BUFLEN = 1000;
-    BUFFER = decltype(BUFFER)(new uint8_t[BUFLEN]);
-
+void websocket_service(net::TCP& tcp, uint16_t port)
+{
+  // toggle me
+  static const bool SECURE = false;
+  if (SECURE)
+  {
+    auto& filesys = fs::memdisk().fs();
     // load CA certificate
     auto ca_cert = filesys.stat("/test.der");
     // load CA private key
@@ -48,41 +53,77 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     // load server private key
     auto srv_key = filesys.stat("/server.key");
 
-    using namespace http;
-    // Set up a TCP server on port 443
-    static http::TLS_SMP_server httpd(
-        "blabla", ca_key, ca_cert, srv_key, inet.tcp());
-    //static Server httpd(inet.tcp());
+    PER_CPU(httpd).server = new http::Secure_server(
+          "blabla", ca_key, ca_cert, srv_key, tcp);
+  }
+  else
+  {
+    PER_CPU(httpd).server = new http::Server(tcp);
+  }
 
-    // Set up server connector
-    static net::WS_server_connector ws_serve(
-      [] (net::WebSocket_ptr ws)
+  // buffer used for testing
+  static const int BUFLEN = 1000;
+  PER_CPU(httpd).buffer = net::tcp::buffer_t(new uint8_t[BUFLEN]);
+
+  // Set up server connector
+  PER_CPU(httpd).ws_serve = new net::WS_server_connector(
+    [&tcp] (net::WebSocket_ptr ws)
+    {
+      assert(SMP::cpu_id() == tcp.get_cpuid());
+      // sometimes we get failed WS connections
+      if (ws == nullptr) return;
+
+      auto& socket = new_client(std::move(ws));
+      // if we are still connected, attempt was verified and the handshake was accepted
+      if (socket->is_alive())
       {
-        // sometimes we get failed WS connections
-        if (ws == nullptr) return;
+        socket->on_read =
+        [] (auto message) {
+          printf("WebSocket on_read: %.*s\n", (int) message->size(), message->data());
+        };
 
-        auto& socket = new_client(std::move(ws));
-        // if we are still connected, attempt was verified and the handshake was accepted
-        if (socket->is_alive())
-        {
-          socket->on_read =
-          [] (auto message) {
-            printf("WebSocket on_read: %.*s\n", (int) message->size(), message->data());
-          };
+        //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
+        for (int i = 0; i < 1000; i++)
+            socket->write(PER_CPU(httpd).buffer, BUFLEN, net::op_code::BINARY);
 
-          //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
-          for (int i = 0; i < 1000; i++)
-              socket->write(BUFFER, BUFLEN, net::op_code::BINARY);
+        //socket->close();
+      }
+    },
+    accept_client);
+  PER_CPU(httpd).server->on_request(*PER_CPU(httpd).ws_serve);
+  PER_CPU(httpd).server->listen(port);
+  /// server ///
+}
 
-          //socket->close();
-        }
-      },
-      accept_client);
-    httpd.on_request(ws_serve);
-    httpd.listen(port);
-    /// server ///
+static void tcp_service(net::TCP& tcp)
+{
+  // echo server
+  auto& echo = tcp.listen(7, [] (auto) {});
+  echo.on_connect(
+    [] (auto conn) {
+      conn->on_read(1024,
+      [conn] (auto buf, size_t len) {
+        conn->write(buf, len);
+      });
+    });
+
+  // start a websocket server on @port
+  websocket_service(tcp, 8000);
+}
+
+void Service::start()
+{
+  auto& inet = net::Inet4::ifconfig<>(0);
+  inet.network_config(
+      {  10, 0,  0, 42 },  // IP
+      { 255,255,255, 0 },  // Netmask
+      {  10, 0,  0,  1 },  // Gateway
+      {  10, 0,  0,  1 }); // DNS
+
+  fs::memdisk().init_fs(
+  [] (auto err, auto&) {
+    assert(!err);
   });
-
 
   /// client ///
   static http::Client client(inet.tcp());
@@ -102,31 +143,17 @@ static void websocket_service(net::Inet<net::IP4>& inet, uint16_t port)
     websockets.push_back(std::move(socket));
   });
   /// client ///
-}
 
-void Service::start()
-{
-  auto& inet = net::Inet4::ifconfig<>(0);
-  inet.network_config(
-      {  10, 0,  0, 42 },  // IP
-      { 255,255,255, 0 },  // Netmask
-      {  10, 0,  0,  1 },  // Gateway
-      {  10, 0,  0,  1 }); // DNS
+  // run websocket server locally
+  websocket_service(inet.tcp(), 8000);
 
-  websocket_service(inet, 8000);
-
-  auto& echo = inet.tcp().listen(7);
-  echo.on_connect(
-    [] (auto conn) {
-      conn->on_read(1024,
-      [conn] (auto buf, size_t len) {
-        conn->write(buf, len);
-      });
-    });
+  // run websocket servers on CPUs
+  //init_tcp_smp_system(inet, tcp_service);
 }
 
 static void recursive_task();
 static void allocating_task();
+static void per_cpu_task();
 
 #include <profile>
 #include <smp>
@@ -135,12 +162,19 @@ void Service::ready()
   if (SMP::cpu_id() != 0)
   {
     //recursive_task();
-    allocating_task();
+    //allocating_task();
+    //per_cpu_task();
   }
 
   //auto stats = ScopedProfiler::get_statistics();
   //printf("%.*s\n", stats.size(), stats.c_str());
 }
+
+struct alignas(SMP_ALIGN) taskdata_t
+{
+  int count = 0;
+};
+static SMP_ARRAY<taskdata_t> taskdata;
 
 void recursive_task()
 {
@@ -166,12 +200,6 @@ void recursive_task()
 }
 
 static const int ALLOC_LEN = 1024*1024*1;
-
-struct alignas(SMP_ALIGN) taskdata_t
-{
-  int count = 0;
-};
-SMP_ARRAY<taskdata_t> taskdata;
 
 void allocating_task()
 {
@@ -205,6 +233,34 @@ void allocating_task()
           SMP::global_unlock();
           // go back to main CPU
           allocating_task();
+        }, x);
+      SMP::signal(x);
+    });
+}
+
+static spinlock_t testlock = 0;
+void per_cpu_task()
+{
+  SMP::add_bsp_task(
+    [x = SMP::cpu_id()] () {
+      // verify and delete data
+      lock(testlock);
+      assert(&PER_CPU(taskdata) == &taskdata[0]);
+      unlock(testlock);
+
+      SMP::add_task(
+        [] {
+          lock(testlock);
+          assert(&PER_CPU(taskdata) == &taskdata[SMP::cpu_id()]);
+          unlock(testlock);
+          // show the task finished successfully
+          PER_CPU(taskdata).count++;
+          SMP::global_lock();
+          printf("%d: Finished task successfully %d times!\n",
+                SMP::cpu_id(), PER_CPU(taskdata).count);
+          SMP::global_unlock();
+          // go back to main CPU
+          per_cpu_task();
         }, x);
       SMP::signal(x);
     });

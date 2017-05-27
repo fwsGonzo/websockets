@@ -15,6 +15,7 @@ set(BINARY       "websockets")
 # Source files to be linked with OS library parts to form bootable image
 set(SOURCES
     service.cpp
+    tcp_smp.cpp
     tls_smp_server.cpp
     tls_smp_client.cpp
     tls_smp_system.cpp

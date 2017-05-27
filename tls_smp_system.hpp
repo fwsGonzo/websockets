@@ -24,7 +24,7 @@
 #include <fs/dirent.hpp>
 #include <smp>
 
-#define TLS_DEBUG 1
+//#define TLS_DEBUG 1
 
 #define TLS_ALWAYS_PRINT(fmt, ...) \
     SMP::global_lock();     \

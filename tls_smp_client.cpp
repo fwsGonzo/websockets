@@ -54,7 +54,7 @@ void SMP_TLS_State::write(tcp::buffer_t buff, size_t n)
 void SMP_TLS_State::close()
 {
   assert(SMP::cpu_id() != 0);
-  TLS_PRINT("TLS %d close called on %d\n",
+  TLS_ALWAYS_PRINT("TLS %d close called on %d\n",
             this->stream_id, SMP::cpu_id());
   SMP::add_bsp_task(
   [this] () {
@@ -65,22 +65,19 @@ void SMP_TLS_State::close()
 
 void SMP_TLS_State::tls_emit_data(const uint8_t buf[], size_t len)
 {
-  static spinlock_t thislock = 0;
-  lock(thislock);
   TLS_PRINT("TLS %d emit %lu bytes on %d\n",
             this->stream_id, len, SMP::cpu_id());
   assert(SMP::cpu_id() == this->system_cpu);
 
-  auto buffff = tcp::buffer_t(new uint8_t[len]);
-  memcpy(buffff.get(), buf, len);
+  tcp::buffer_t buff(new uint8_t[len], std::default_delete<uint8_t[]> ());
+  memcpy(buff.get(), buf, len);
   // run on main CPU
   SMP::add_bsp_task(
-  [this, buff = std::move(buffff), len] () {
+  [this, buf = std::move(buff), len] () {
     TLS_PRINT("TLS %d TCP write() %lu (writable=%d) on %d\n",
               this->stream_id, len, stream.is_writable(), SMP::cpu_id());
-    stream.bsp_write(buff, len);
+    stream.bsp_write(std::move(buf), len);
   });
-  unlock(thislock);
 }
 
 void SMP_TLS_State::tls_record_received(
@@ -93,15 +90,15 @@ void SMP_TLS_State::tls_record_received(
 
   if (o_read)
   {
-    auto buffff = tcp::buffer_t(new uint8_t[len]);
-    memcpy(buffff.get(), buf, len);
+    tcp::buffer_t buffer(new uint8_t[len], std::default_delete<uint8_t[]> ());
+    memcpy(buffer.get(), buf, len);
     // run on main CPU
     SMP::add_bsp_task(
-    [this, buf = buffff, len] () {
+    [this, buf = std::move(buffer), len] () {
       if (o_read) {
         TLS_PRINT("TLS %d calling on_read on %d\n",
                   this->stream_id, SMP::cpu_id());
-        o_read(buf, len);
+        o_read(std::move(buf), len);
       }
     });
   }
@@ -109,7 +106,7 @@ void SMP_TLS_State::tls_record_received(
 
 void SMP_TLS_State::tls_session_activated()
 {
-  TLS_ALWAYS_PRINT("TLS %d session connected on %d\n",
+  TLS_PRINT("TLS %d session connected on %d\n",
             this->stream_id, SMP::cpu_id());
   assert(SMP::cpu_id() == this->system_cpu);
   this->active = true; // ACTIVATE!
