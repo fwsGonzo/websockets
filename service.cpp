@@ -5,6 +5,7 @@
 #include "tcp_smp.hpp"
 #include <memdisk>
 #include <https>
+static_assert(SMP_MAX_CORES > 1, "SMP must be enabled");
 
 // configuration
 static const bool ENABLE_TLS   = false;
@@ -20,7 +21,6 @@ struct alignas(SMP_ALIGN) HTTP_server
   std::deque<net::WebSocket_ptr> clients;
 };
 static SMP_ARRAY<HTTP_server> httpd;
-
 
 static net::WebSocket_ptr& new_client(net::WebSocket_ptr socket)
 {
@@ -164,7 +164,6 @@ extern void allocating_task();
 extern void per_cpu_task();
 
 #include <profile>
-#include <smp>
 void Service::ready()
 {
   if (SMP::cpu_id() != 0)
