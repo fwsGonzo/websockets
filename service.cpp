@@ -139,9 +139,6 @@ void Service::start()
     assert(!err);
   });
 
-  // SMP exceptions is the main culprit
-  exceptions_task();
-
   if (TCP_OVER_SMP == false)
   {
     // run websocket server locally
@@ -155,6 +152,9 @@ void Service::start()
 #include <profile>
 void Service::ready()
 {
+  // SMP exceptions is the main culprit
+  exceptions_task();
+
   if (SMP::cpu_id() != 0)
   {
     //recursive_task();
