@@ -11,6 +11,8 @@ static_assert(SMP_MAX_CORES > 1, "SMP must be enabled");
 static const bool ENABLE_TLS   = false;
 static const bool TCP_OVER_SMP = true;
 
+//#define DISABLE_CRASH_CONTEXT 1
+#include <crash>
 
 struct alignas(SMP_ALIGN) HTTP_server
 {
@@ -76,6 +78,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
       assert(SMP::cpu_id() == tcp.get_cpuid());
       // sometimes we get failed WS connections
       if (ws == nullptr) return;
+      SET_CRASH("WebSocket created: %s", ws->to_string().c_str());
 
       auto& socket = new_client(std::move(ws));
       // if we are still connected, attempt was verified and the handshake was accepted
@@ -115,6 +118,12 @@ static void tcp_service(net::TCP& tcp)
   websocket_service(tcp, 8000);
 }
 
+extern void recursive_task();
+extern void allocating_task();
+extern void per_cpu_task();
+extern void exceptions_task();
+extern void tls_task();
+
 void Service::start()
 {
   // IP stack
@@ -130,8 +139,39 @@ void Service::start()
     assert(!err);
   });
 
+  // SMP exceptions is the main culprit
+  exceptions_task();
+
+  if (TCP_OVER_SMP == false)
+  {
+    // run websocket server locally
+    websocket_service(inet.tcp(), 8000);
+  } else {
+    // run websocket servers on CPUs
+    init_tcp_smp_system(inet, tcp_service);
+  }
+}
+
+#include <profile>
+void Service::ready()
+{
+  if (SMP::cpu_id() != 0)
+  {
+    //recursive_task();
+    //allocating_task();
+    //per_cpu_task();
+    //tls_task();
+    //exceptions_task();
+  }
+
+  //auto stats = ScopedProfiler::get_statistics();
+  //printf("%.*s\n", stats.size(), stats.c_str());
+}
+
+void ws_client_test(net::TCP& tcp)
+{
   /// client ///
-  static http::Client client(inet.tcp());
+  static http::Client client(tcp);
   net::WebSocket::connect(client, "ws://10.0.0.1:8001/",
   [] (net::WebSocket_ptr socket)
   {
@@ -148,31 +188,4 @@ void Service::start()
     PER_CPU(httpd).clients.push_back(std::move(socket));
   });
   /// client ///
-
-  if (TCP_OVER_SMP == false)
-  {
-    // run websocket server locally
-    websocket_service(inet.tcp(), 8000);
-  } else {
-    // run websocket servers on CPUs
-    init_tcp_smp_system(inet, tcp_service);
-  }
-}
-
-extern void recursive_task();
-extern void allocating_task();
-extern void per_cpu_task();
-
-#include <profile>
-void Service::ready()
-{
-  if (SMP::cpu_id() != 0)
-  {
-    //recursive_task();
-    //allocating_task();
-    //per_cpu_task();
-  }
-
-  //auto stats = ScopedProfiler::get_statistics();
-  //printf("%.*s\n", stats.size(), stats.c_str());
 }

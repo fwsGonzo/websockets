@@ -3,6 +3,9 @@
 #define SMP_DEBUG 1
 #include <smp>
 
+//#define DISABLE_CRASH_CONTEXT 1
+#include <crash>
+
 typedef net::tcp::Connection::Tuple tuple_t;
 
 struct alignas(SMP_ALIGN) TCP_SMP
@@ -28,6 +31,7 @@ void TCP_SMP::transmit(net::Packet_ptr packet)
     SMP::task_func::make_packed(
     [this, pkt = std::move(packet)] () mutable {
       debug("Transmitting packet with len %u to %p\n", pkt->size(), ip4_out);
+      SET_CRASH("Transmitting packet %p with len %u", pkt->buf(), pkt->size());
       ip4_out->transmit(std::move(pkt));
     }));
 }
@@ -42,12 +46,18 @@ void TCP_SMP::up(net::Inet<net::IP4>* inet)
 
 static inline void guide(net::tcp::Packet_ptr packet, int cpu)
 {
+  SET_CRASH("Moving incoming packet %p len = %u to cpu %d",
+            packet->buf(), packet->size(), cpu);
   SMP::add_task(
   SMP::task_func::make_packed(
     [cpu, pkt = std::move(packet)] () mutable {
       assert(PER_CPU(smp_system).tcp().get_cpuid() == SMP::cpu_id());
       assert(PER_CPU(smp_system).tcp().get_cpuid() == cpu);
+      SET_CRASH("BEFORE Calling TCP::receive, packet %p len = %u",
+                pkt->buf(), pkt->size());
       PER_CPU(smp_system).tcp().receive(std::move(pkt));
+      SET_CRASH("AFTER Calling TCP::receive, packet %p len = %u",
+                pkt->buf(), pkt->size());
     }), cpu);
   SMP::signal(cpu);
 }
@@ -89,7 +99,9 @@ void init_tcp_smp_system(ip4_stack& inet, tcp_service_func func)
     SMP::add_task(
     SMP::task_func::make_packed(
       [cpu, network = &inet, func] () {
+        SET_CRASH("Creating TCP system");
         PER_CPU(smp_system).up(network);
+        SET_CRASH("Calling TCP over SMP user delegate for service code");
         func(PER_CPU(smp_system).tcp());
       }), cpu);
     SMP::signal(cpu);

@@ -44,7 +44,7 @@ struct WebSocket
             accept_func = nullptr);
   /// Client-side connection
   static void
-  connect(http::Client& client, 
+  connect(http::Client& client,
           std::string   origin,
           uri::URI      dest,
           connect_func  callback);

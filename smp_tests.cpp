@@ -97,3 +97,47 @@ void per_cpu_task()
       SMP::signal(x);
     });
 }
+
+#include <stdexcept>
+void exceptions_task()
+{
+  // verify and delete data
+  bool VVV = false;
+
+  try
+  {
+    throw std::runtime_error("A massive failure happened");
+  }
+  catch (std::exception& e)
+  {
+    SMP_PRINT("CPU %d caught exception: %s\n", SMP::cpu_id(), e.what());
+    VVV = true;
+  }
+  catch (...)
+  {
+    SMP_PRINT("CPU %d caught unknown exception\n", SMP::cpu_id());
+    VVV = true;
+  }
+  assert(VVV);
+  SMP_PRINT("Success on CPU %d\n", SMP::cpu_id());
+}
+
+void tls_task()
+{
+  SMP_PRINT("Work starting on CPU %d\n", SMP::cpu_id());
+  thread_local int tdata_value = 1;
+  thread_local int tbss_value = 0;
+  for (int i = 0; i < 100; i++)
+  {
+    tdata_value++;
+  }
+  for (int i = 0; i < 100; i++)
+  {
+    tbss_value++;
+  }
+  SMP_PRINT("Work finishing on CPU %d\n", SMP::cpu_id());
+  lock(testlock);
+  assert(tdata_value == 101);
+  assert(tbss_value == 100);
+  unlock(testlock);
+}
