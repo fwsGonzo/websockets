@@ -33,11 +33,9 @@ namespace tls
 {
 class SMP_client;
 
-class SMP_TLS_State : public Botan::TLS::Callbacks
-{
+class SMP_TLS_State : public Botan::TLS::Callbacks {
 public:
   using Connection_ptr = tcp::Connection_ptr;
-  using Buffer = std::unique_ptr<uint8_t[]>;
 
   SMP_TLS_State(
         SMP_client& in_stream,
@@ -74,9 +72,9 @@ public:
     o_read    = nullptr;
   }
 
-  void read(tcp::buffer_t buff, size_t n);
+  void read(tcp::buffer_t buff);
 
-  void write(tcp::buffer_t buff, size_t n);
+  void write(tcp::buffer_t buff);
 
   // close from TLS-side
   void close();
@@ -179,24 +177,16 @@ public:
     Stream::on_close(cb);
   }
 
-  void write(const void* buffer, size_t n) override
+  void write(const void* buffer, size_t len) override
   {
     // create buffer we have control over
-    auto* data = new uint8_t[n];
-    memcpy(data, buffer, n);
-    buffer_t buf(data, std::default_delete<uint8_t[]> ());
-    // ship it to vcpu
-    write(std::move(buf), n);
+    write(tcp::construct_buffer((char*) buffer, (char*) buffer + len));
   }
   void write(const std::string& str) override
   {
     this->write(str.data(), str.size());
   }
-  void write(Chunk chunk) override
-  {
-    this->write(chunk.data(), chunk.size());
-  }
-  void write(buffer_t buf, size_t n) override
+  void write(buffer_t buf) override
   {
     TLS_PRINT("TCP %d write(buffer_t) called on %d\n",
               get_id(), SMP::cpu_id());
@@ -204,8 +194,8 @@ public:
     assert(tls_state->is_active());
 
     SMP::add_task(
-    [this, buff = std::move(buf), n] () {
-      tls_state->write(std::move(buff), n);
+    [this, buff = std::move(buf)] () {
+      tls_state->write(std::move(buff));
     }, this->system_cpu);
     SMP::signal(this->system_cpu);
   }
@@ -221,24 +211,24 @@ public:
   }
 
 protected:
-  void bsp_write(buffer_t buf, size_t n)
+  void bsp_write(buffer_t buf)
   {
     TLS_PRINT("TCP %d bsp_write(): %lu bytes on %d\n",
-              get_id(), n, SMP::cpu_id());
+              get_id(), buf->size(), SMP::cpu_id());
     assert(SMP::cpu_id() == 0);
-    Stream::write(std::move(buf), n);
+    Stream::write(std::move(buf));
   }
-  void bsp_read(buffer_t buf, const size_t n)
+  void bsp_read(buffer_t buf)
   {
     TLS_PRINT("TCP %d bsp_read(): %lu bytes on %d\n",
-              get_id(), n, SMP::cpu_id());
+              get_id(), buf->size(), SMP::cpu_id());
     assert(SMP::cpu_id() == 0);
 
     // execute tls_read on selected vcpu
     SMP::add_task(
-    [this, buff = std::move(buf), n] () {
+    [this, buff = std::move(buf)] () {
       assert(tls_state);
-      this->tls_state->read(std::move(buff), n);
+      this->tls_state->read(std::move(buff));
     }, this->system_cpu);
     SMP::signal(this->system_cpu);
   }

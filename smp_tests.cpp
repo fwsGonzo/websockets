@@ -106,6 +106,7 @@ void exceptions_task()
 
   try
   {
+    SMP_PRINT("CPU %d throwing exception...\n", SMP::cpu_id());
     throw std::runtime_error("A massive failure happened");
   }
   catch (std::exception& e)

@@ -68,8 +68,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
   }
 
   // buffer used for testing
-  static const int BUFLEN = 1000;
-  PER_CPU(httpd).buffer = net::tcp::buffer_t(new uint8_t[BUFLEN]);
+  PER_CPU(httpd).buffer = net::tcp::construct_buffer(1024);
 
   // Set up server connector
   PER_CPU(httpd).ws_serve = new net::WS_server_connector(
@@ -91,7 +90,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
 
         //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
         for (int i = 0; i < 1000; i++)
-            socket->write(PER_CPU(httpd).buffer, BUFLEN, net::op_code::BINARY);
+            socket->write(PER_CPU(httpd).buffer, net::op_code::BINARY);
 
         //socket->close();
       }
@@ -109,8 +108,8 @@ static void tcp_service(net::TCP& tcp)
   echo.on_connect(
     [] (auto conn) {
       conn->on_read(1024,
-      [conn] (auto buf, size_t len) {
-        conn->write(buf, len);
+      [conn] (auto buf) {
+        conn->write(buf);
       });
     });
 
@@ -145,15 +144,19 @@ void Service::start()
     websocket_service(inet.tcp(), 8000);
   } else {
     // run websocket servers on CPUs
-    init_tcp_smp_system(inet, tcp_service);
+    //init_tcp_smp_system(inet, tcp_service);
   }
 }
 
 #include <profile>
 void Service::ready()
 {
+  //asm ("movq $0, %rax");
+  //asm ("idivq %rax");
+  //asm ("movl $0, %eax");
+  //asm ("idivl %eax");
   // SMP exceptions is the main culprit
-  exceptions_task();
+  //exceptions_task();
 
   if (SMP::cpu_id() != 0)
   {
