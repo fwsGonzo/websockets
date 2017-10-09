@@ -1,15 +1,15 @@
 #include <os>
 #include <net/inet4>
-#include <deque>
 #include <net/ws/connector.hpp>
-#include "tcp_smp.hpp"
 #include <memdisk>
 #include <https>
-static_assert(SMP_MAX_CORES > 1, "SMP must be enabled");
+#include "tcp_smp.hpp"
+#include <deque>
 
 // configuration
 static const bool ENABLE_TLS   = false;
-static const bool TCP_OVER_SMP = true;
+static const bool TCP_OVER_SMP = false;
+static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
 
 //#define DISABLE_CRASH_CONTEXT 1
 #include <crash>
@@ -144,7 +144,7 @@ void Service::start()
     websocket_service(inet.tcp(), 8000);
   } else {
     // run websocket servers on CPUs
-    //init_tcp_smp_system(inet, tcp_service);
+    init_tcp_smp_system(inet, tcp_service);
   }
 }
 

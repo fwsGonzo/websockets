@@ -17,6 +17,7 @@
 
 #include "tls_smp_system.hpp"
 #include <botan/system_rng.h>
+#include <botan/data_src.h>
 #include <botan/pkcs8.h>
 #include <smp>
 
