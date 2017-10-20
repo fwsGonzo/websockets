@@ -25,17 +25,18 @@ void recursive_task()
           printf("%d: Back on my CPU (%d)!\n", x, SMP::cpu_id());
           SMP::global_unlock();
           // go back to main CPU
-          recursive_task();
+          //recursive_task();
         }, x);
       SMP::signal(x);
     });
 }
 
-static const int ALLOC_LEN = 1024*1024*1;
 
 void allocating_task()
 {
   // alloc data with cpuid as member
+  static const int ALLOC_TIMES = 1000;
+  static const int ALLOC_LEN   = 1024*1024*1;
   auto* y = new char[ALLOC_LEN];
   for (int i = 0; i < ALLOC_LEN; i++) y[i] = SMP::cpu_id();
 
@@ -64,7 +65,7 @@ void allocating_task()
                 SMP::cpu_id(), PER_CPU(taskdata).count);
           SMP::global_unlock();
           // go back to main CPU
-          allocating_task();
+          if (PER_CPU(taskdata).count < ALLOC_TIMES) allocating_task();
         }, x);
       SMP::signal(x);
     });
@@ -73,6 +74,7 @@ void allocating_task()
 static spinlock_t testlock = 0;
 void per_cpu_task()
 {
+  static const int PERCPU_TIMES = 1000;
   SMP::add_bsp_task(
     [x = SMP::cpu_id()] () {
       // verify and delete data
@@ -92,7 +94,7 @@ void per_cpu_task()
                 SMP::cpu_id(), PER_CPU(taskdata).count);
           SMP::global_unlock();
           // go back to main CPU
-          per_cpu_task();
+          if (PER_CPU(taskdata).count < PERCPU_TIMES) per_cpu_task();
         }, x);
       SMP::signal(x);
     });

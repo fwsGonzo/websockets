@@ -163,7 +163,7 @@ void Service::ready()
     //recursive_task();
     //allocating_task();
     //per_cpu_task();
-    //tls_task();
+    tls_task();
     //exceptions_task();
   }
 

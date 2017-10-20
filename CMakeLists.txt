@@ -28,8 +28,8 @@ set(LOCAL_INCLUDES )
 # DRIVERS / PLUGINS:
 set(DRIVERS
   virtionet
-  #vmxnet3
-  #silent_start
+  vmxnet3
+  boot_logger
   #heap_debugging
   )
 
