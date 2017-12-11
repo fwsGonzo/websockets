@@ -7,9 +7,10 @@
 #include <deque>
 
 // configuration
-static const bool ENABLE_TLS   = false;
-static const bool TCP_OVER_SMP = false;
-static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
+static const bool ENABLE_TLS    = true;
+static const bool USE_BOTAN_TLS = false;
+static const bool TCP_OVER_SMP  = false;
+//static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
 
 //#define DISABLE_CRASH_CONTEXT 1
 #include <crash>
@@ -51,16 +52,24 @@ void websocket_service(net::TCP& tcp, uint16_t port)
 {
   if (ENABLE_TLS)
   {
-    auto& filesys = fs::memdisk().fs();
-    // load CA certificate
-    auto ca_cert = filesys.stat("/test.der");
-    // load CA private key
-    auto ca_key  = filesys.stat("/test.key");
-    // load server private key
-    auto srv_key = filesys.stat("/server.key");
+    if (USE_BOTAN_TLS)
+    {
+      auto& filesys = fs::memdisk().fs();
+      // load CA certificate
+      auto ca_cert = filesys.stat("/test.der");
+      // load CA private key
+      auto ca_key  = filesys.stat("/test.key");
+      // load server private key
+      auto srv_key = filesys.stat("/server.key");
 
-    PER_CPU(httpd).server = new http::Secure_server(
-          "blabla", ca_key, ca_cert, srv_key, tcp);
+      PER_CPU(httpd).server = new http::Secure_server(
+            "blabla", ca_key, ca_cert, srv_key, tcp);
+    }
+    else
+    {
+      PER_CPU(httpd).server = new http::OpenSSL_server(
+            "/test.pem", "/test.key", tcp);
+    }
   }
   else
   {
@@ -89,7 +98,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
         };
 
         //socket->write("THIS IS A TEST CAN YOU HEAR THIS?");
-        for (int i = 0; i < 1000; i++)
+        for (int i = 0; i < 2500; i++)
             socket->write(PER_CPU(httpd).buffer, net::op_code::BINARY);
 
         //socket->close();
@@ -103,15 +112,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
 
 static void tcp_service(net::TCP& tcp)
 {
-  // echo server
-  auto& echo = tcp.listen(7, [] (auto) {});
-  echo.on_connect(
-    [] (auto conn) {
-      conn->on_read(1024,
-      [conn] (auto buf) {
-        conn->write(buf);
-      });
-    });
+  SMP_PRINT("On CPU %d with stack %p\n", SMP::cpu_id(), &tcp);
 
   // start a websocket server on @port
   websocket_service(tcp, 8000);
@@ -138,23 +139,28 @@ void Service::start()
     assert(!err);
   });
 
+  // echo server
+  auto& echo = inet.tcp().listen(7,
+    [] (auto conn) {
+      conn->on_read(1024,
+      [conn] (auto buf) {
+        conn->write(buf);
+      });
+    });
+
   if (TCP_OVER_SMP == false)
   {
     // run websocket server locally
     websocket_service(inet.tcp(), 8000);
   } else {
     // run websocket servers on CPUs
-    init_tcp_smp_system(inet, tcp_service);
+    //init_tcp_smp_system(inet, tcp_service);
   }
 }
 
 #include <profile>
 void Service::ready()
 {
-  //asm ("movq $0, %rax");
-  //asm ("idivq %rax");
-  //asm ("movl $0, %eax");
-  //asm ("idivl %eax");
   // SMP exceptions is the main culprit
   //exceptions_task();
 
@@ -164,7 +170,7 @@ void Service::ready()
     //allocating_task();
     //per_cpu_task();
     tls_task();
-    //exceptions_task();
+    exceptions_task();
   }
 
   //auto stats = ScopedProfiler::get_statistics();

@@ -29,8 +29,9 @@ set(LOCAL_INCLUDES )
 set(DRIVERS
   virtionet
   vmxnet3
-  boot_logger
-  #heap_debugging
+  #boot_logger
+  #disk_logger
+  #ide_writeonly
   )
 
 # include service build script
