@@ -62,7 +62,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
       // load server private key
       auto srv_key = filesys.stat("/server.key");
 
-      PER_CPU(httpd).server = new http::Secure_server(
+      PER_CPU(httpd).server = new http::Botan_server(
             "blabla", ca_key, ca_cert, srv_key, tcp);
     }
     else
