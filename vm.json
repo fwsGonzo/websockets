@@ -1,11 +1,4 @@
 {
   "net" : [{"device" : "virtio"}],
-  "drives"  : [{
-    "file" : "../my.disk",
-    "type" : "ide",
-    "format" : "raw",
-    "media" : "disk"
-  }],
-  "mem" : 512,
-  "smp" : 1
+  "mem" : 512
 }
