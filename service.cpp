@@ -17,8 +17,8 @@ static const bool TCP_OVER_SMP  = false;
 
 struct alignas(SMP_ALIGN) HTTP_server
 {
-  http::Server*      server = nullptr;
-  net::tcp::buffer_t buffer = nullptr;
+  http::Server* server = nullptr;
+  net::Stream::buffer_t buffer = nullptr;
   net::WS_server_connector* ws_serve = nullptr;
 };
 static SMP::Array<HTTP_server> httpd;
@@ -123,7 +123,6 @@ void Service::start()
       });
     });
 
-/*
   // Read-only filesystem
   fs::memdisk().init_fs(
   [] (auto err, auto&) {
@@ -138,10 +137,8 @@ void Service::start()
     // run websocket servers on CPUs
     //init_tcp_smp_system(inet, tcp_service);
   }
-*/
 }
 
-/*
 #include <profile>
 static void print_heap_info()
 {
@@ -164,4 +161,3 @@ void Service::ready()
     print_heap_info();
   });
 }
-*/
