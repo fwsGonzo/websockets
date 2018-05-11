@@ -7,7 +7,7 @@
 #include <deque>
 
 // configuration
-static const bool ENABLE_TLS    = false;
+static const bool ENABLE_TLS    = true;
 static const bool USE_BOTAN_TLS = false;
 static const bool TCP_OVER_SMP  = false;
 //static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
@@ -144,6 +144,7 @@ static void print_heap_info()
 {
   const std::string heapinfo = HeapDiag::to_string();
   printf("%s\n", heapinfo.c_str());
+  StackSampler::print(10);
 }
 
 void Service::ready()
@@ -160,4 +161,6 @@ void Service::ready()
   Timers::periodic(1s, [] (int) {
     print_heap_info();
   });
+
+  StackSampler::begin();
 }
