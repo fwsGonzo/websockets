@@ -1,9 +1,8 @@
 #include <os>
-#include <net/inet4>
+#include <net/inet>
 #include <net/ws/connector.hpp>
 #include <memdisk>
 #include <https>
-#include "tcp_smp.hpp"
 #include <deque>
 
 // configuration
@@ -108,7 +107,7 @@ static void tcp_service(net::TCP& tcp)
 
 void Service::start()
 {
-  auto& inet = net::Inet4::ifconfig<>(0);
+  auto& inet = net::Super_stack::get(0);
   inet.network_config(
       {  10, 0,  0, 42 },  // IP
       { 255,255,255, 0 },  // Netmask
@@ -117,10 +116,16 @@ void Service::start()
   // echo server
   auto& echo = inet.tcp().listen(7,
     [] (auto conn) {
-      conn->on_read(1024,
-      [conn] (auto buf) {
-        conn->write(buf);
-      });
+      auto stream = new net::tcp::Stream(conn);
+      stream->on_read(1024,
+        [stream] (auto buf) {
+          stream->write(buf);
+        });
+      stream->on_close(
+        [stream] () {
+          printf("Deleting TCP stream\n");
+          delete stream;
+        });
     });
 
   // Read-only filesystem

@@ -1,5 +1,5 @@
 #pragma once
-#include <net/inet4>
+#include <net/inet>
 
 using tcp_service_func = delegate<void(net::TCP&)>;
 using ip4_stack        = net::Inet<net::IP4>;
