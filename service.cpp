@@ -6,7 +6,7 @@
 #include <deque>
 
 // configuration
-static const bool ENABLE_TLS    = true;
+static const bool ENABLE_TLS    = false;
 static const bool USE_BOTAN_TLS = false;
 static const bool TCP_OVER_SMP  = false;
 //static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
@@ -62,7 +62,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
   }
 
   // buffer used for testing
-  PER_CPU(httpd).buffer = net::tcp::construct_buffer(1200);
+  PER_CPU(httpd).buffer = net::Stream::construct_buffer(1200);
 
   // Set up server connector
   PER_CPU(httpd).ws_serve = new net::WS_server_connector(
@@ -89,7 +89,7 @@ void websocket_service(net::TCP& tcp, uint16_t port)
       for (int i = 0; i < 1500; i++)
           wptr->write(PER_CPU(httpd).buffer, net::op_code::BINARY);
 
-      //wptr->close();
+      wptr->close();
     },
     accept_client);
   PER_CPU(httpd).server->on_request(*PER_CPU(httpd).ws_serve);
@@ -113,19 +113,22 @@ void Service::start()
       { 255,255,255, 0 },  // Netmask
       {  10, 0,  0,  1 },  // Gateway
       {  10, 0,  0,  1 }); // DNS
+
   // echo server
+  inet.tcp().set_MSL(std::chrono::seconds(3));
   auto& echo = inet.tcp().listen(7,
-    [] (auto conn) {
-      auto stream = new net::tcp::Stream(conn);
-      stream->on_read(1024,
-        [stream] (auto buf) {
-          stream->write(buf);
-        });
+    [] (auto conn)
+    {
+      auto* stream = new net::tcp::Stream(conn);
+
       stream->on_close(
         [stream] () {
-          printf("Deleting TCP stream\n");
+          printf("TCP stream on_close\n");
           delete stream;
         });
+
+      stream->write("Hei\n");
+      delete stream;
     });
 
   // Read-only filesystem
@@ -164,7 +167,7 @@ void Service::ready()
 
   using namespace std::chrono;
   Timers::periodic(1s, [] (int) {
-    print_heap_info();
+    //print_heap_info();
   });
 
   StackSampler::begin();
