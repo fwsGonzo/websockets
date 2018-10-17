@@ -30,9 +30,9 @@ set(DRIVERS
   virtionet
   vmxnet3
   #boot_logger
-  #disk_logger
-  #ide_writeonly
   )
+
+set(PLUGINS vfs)
 
 # include service build script
 include($ENV{INCLUDEOS_PREFIX}/includeos/post.service.cmake)

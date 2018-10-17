@@ -1,13 +1,15 @@
 #include <os>
 #include <net/inet>
+#include <net/interfaces>
 #include <net/ws/connector.hpp>
 #include <memdisk>
 #include <https>
 #include <deque>
 
 // configuration
-static const bool ENABLE_TLS    = false;
+static const bool ENABLE_TLS    = true;
 static const bool USE_BOTAN_TLS = false;
+static const bool USE_S2N_TLS   = true;
 static const bool TCP_OVER_SMP  = false;
 //static_assert(SMP_MAX_CORES > 1 || TCP_OVER_SMP == false, "SMP must be enabled");
 
@@ -49,6 +51,19 @@ void websocket_service(net::TCP& tcp, uint16_t port)
 
       PER_CPU(httpd).server = new http::Botan_server(
             "blabla", ca_key, ca_cert, srv_key, tcp);
+    }
+    else if (USE_S2N_TLS)
+    {
+      auto& filesys = fs::memdisk().fs();
+      // load CA certificate
+      auto ca_cert = filesys.read_file("/test.pem");
+      assert(ca_cert.is_valid());
+      // load CA private key
+      auto ca_key  = filesys.read_file("/test.key");
+      assert(ca_key.is_valid());
+
+      PER_CPU(httpd).server = new http::S2N_server(
+            ca_cert.to_string(), ca_key.to_string(), tcp);
     }
     else
     {
@@ -107,7 +122,7 @@ static void tcp_service(net::TCP& tcp)
 
 void Service::start()
 {
-  auto& inet = net::Super_stack::get(0);
+  auto& inet = net::Interfaces::get(0);
   inet.network_config(
       {  10, 0,  0, 42 },  // IP
       { 255,255,255, 0 },  // Netmask
